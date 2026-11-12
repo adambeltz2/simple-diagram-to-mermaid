@@ -1,5 +1,7 @@
 # Diagram → Mermaid
 
+**Live app: https://adambeltz2.github.io/simple-diagram-to-mermaid/**
+
 A drag-and-drop canvas (think draw.io) that is a **two-way editor for Mermaid flowcharts**.
 Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canvas.
 
@@ -33,3 +35,6 @@ npm run build
 ## Deploy (GitHub Pages)
 Pushing to `main` runs `.github/workflows/deploy.yml`. One-time setup:
 **Repo → Settings → Pages → Source: GitHub Actions**.
+
+## Versioning
+The version shown in the app footer comes from `version` in `package.json`. Bump it with each release.

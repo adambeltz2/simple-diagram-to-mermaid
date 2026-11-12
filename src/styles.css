@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
-.app { display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto 1fr; grid-template-areas: "bar bar bar" "side canvas right"; }
+.app { display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto 1fr auto; grid-template-areas: "bar bar bar" "side canvas right" "foot foot foot"; }
 .toolbar { grid-area: bar; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .brand { margin-right: 8px; }
 .spacer { flex: 1; }
@@ -48,4 +48,7 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .shape-label textarea { width: 100%; min-width: 90px; text-align: center; resize: none; padding: 2px; }
 .react-flow__handle { width: 9px; height: 9px; background: var(--accent); border: 2px solid var(--bg); opacity: 0; transition: opacity .1s; }
 .shape-node:hover .react-flow__handle, .shape-node.selected .react-flow__handle { opacity: 1; }
-@media (max-width: 900px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto auto; grid-template-areas: "bar" "canvas" "side" "right"; } }
+@media (max-width: 900px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto auto auto; grid-template-areas: "bar" "canvas" "side" "right" "foot"; } }
+
+.footer { grid-area: foot; display: flex; justify-content: space-between; gap: 12px; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.footer a { color: var(--accent); }

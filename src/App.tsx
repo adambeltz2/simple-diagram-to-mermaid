@@ -482,6 +482,13 @@ function Editor() {
         </ReactFlow>
       </main>
 
+      <footer className="footer">
+        <span>Diagram → Mermaid v{__APP_VERSION__}</span>
+        <a href="https://github.com/adambeltz2/simple-diagram-to-mermaid" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </footer>
+
       <section className="right">
         <div className="code-head">
           <h3>Mermaid</h3>
