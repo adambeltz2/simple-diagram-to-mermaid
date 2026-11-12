@@ -85,6 +85,83 @@ function Editor() {
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
+  // ---- undo / redo --------------------------------------------------------
+  type Snap = { direction: Direction; nodes: FlowNode[]; edges: FlowEdge[] };
+  const makeSnap = (): Snap => ({
+    direction,
+    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
+    edges: edges.map(({ selected: _s, ...e }) => e),
+  });
+  const past = useRef<Snap[]>([]);
+  const future = useRef<Snap[]>([]);
+  const lastSnap = useRef<Snap>({
+    direction: initial.g.direction,
+    nodes: initial.nodes,
+    edges: initial.edges,
+  });
+  const lastKey = useRef(JSON.stringify(lastSnap.current));
+  const [, setTick] = useState(0);
+
+  // Record a history step once changes settle (drags emit many events).
+  const commit = () => {
+    const s = makeSnap();
+    const k = JSON.stringify(s);
+    if (k === lastKey.current) return;
+    past.current.push(lastSnap.current);
+    if (past.current.length > 100) past.current.shift();
+    future.current = [];
+    lastSnap.current = s;
+    lastKey.current = k;
+    setTick((t) => t + 1);
+  };
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  useEffect(() => {
+    const t = setTimeout(() => commitRef.current(), 300);
+    return () => clearTimeout(t);
+  }, [nodes, edges, direction]);
+
+  const restore = (s: Snap) => {
+    lastSnap.current = s;
+    lastKey.current = JSON.stringify(s);
+    setDirection(s.direction);
+    setNodes(s.nodes);
+    setEdges(s.edges);
+    setTick((t) => t + 1);
+  };
+  const undo = () => {
+    commit();
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(lastSnap.current);
+    restore(prev);
+  };
+  const redo = () => {
+    commit();
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(lastSnap.current);
+    restore(next);
+  };
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest('input, textarea, select')) return; // keep native text undo
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) undoRef.current();
+      else if ((k === 'z' && e.shiftKey) || k === 'y') redoRef.current();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const graph = useMemo(() => flowToGraph(direction, nodes, edges), [direction, nodes, edges]);
   const generated = useMemo(() => toMermaid(graph), [graph]);
 
@@ -241,6 +318,12 @@ function Editor() {
           </select>
         </label>
         <button onClick={() => load(autoLayout(graph), true)}>Auto layout</button>
+        <button onClick={undo} disabled={past.current.length === 0 && JSON.stringify(makeSnap()) === lastKey.current} title="Ctrl+Z">
+          Undo
+        </button>
+        <button onClick={redo} disabled={future.current.length === 0} title="Ctrl+Shift+Z">
+          Redo
+        </button>
         <span className="spacer" />
         <button onClick={() => fileInput.current?.click()}>Import .mmd</button>
         <button onClick={() => projectInput.current?.click()}>Open project</button>
