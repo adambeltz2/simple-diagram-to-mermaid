@@ -48,7 +48,14 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .shape-label textarea { width: 100%; min-width: 90px; text-align: center; resize: none; padding: 2px; }
 .react-flow__handle { width: 9px; height: 9px; background: var(--accent); border: 2px solid var(--bg); opacity: 0; transition: opacity .1s; }
 .shape-node:hover .react-flow__handle, .shape-node.selected .react-flow__handle { opacity: 1; }
-@media (max-width: 900px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto auto auto; grid-template-areas: "bar" "canvas" "side" "right" "foot"; } }
+@media (max-width: 900px) {
+  .app { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto 65vh auto auto auto; grid-template-areas: "bar" "canvas" "side" "right" "foot"; }
+  .sidebar, .right { overflow: visible; border: none; border-top: 1px solid var(--border); }
+  .palette { grid-template-columns: 1fr 1fr; }
+  .react-flow__minimap { display: none; }
+  .preview { flex: none; min-height: 240px; }
+  .toolbar button, .toolbar select { padding: 8px 12px; }
+}
 
 .footer { grid-area: foot; display: flex; justify-content: space-between; gap: 12px; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .footer a { color: var(--accent); }
