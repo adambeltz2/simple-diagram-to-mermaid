@@ -30,6 +30,18 @@ import { EDGE_STYLES, SHAPES, type Direction, type EdgeStyle, type Graph, type S
 
 const nodeTypes = { shape: ShapeNode };
 const STORAGE_KEY = 'sdtm:graph:v1';
+const THEME_KEY = 'sdtm:theme';
+type Theme = 'dark' | 'light';
+
+function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'dark' || saved === 'light') return saved;
+  } catch {
+    /* ignore */
+  }
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
 const STARTER: Graph = autoLayout({
   direction: 'TD',
@@ -77,6 +89,15 @@ function Editor() {
   const [direction, setDirection] = useState<Direction>(initial.g.direction);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(initial.edges);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
   const [draft, setDraft] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [svg, setSvg] = useState('');
@@ -325,6 +346,13 @@ function Editor() {
           Redo
         </button>
         <span className="spacer" />
+        <button
+          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          title="Toggle dark / light mode"
+          aria-pressed={theme === 'dark'}
+        >
+          {theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode'}
+        </button>
         <button onClick={() => fileInput.current?.click()}>Import .mmd</button>
         <button onClick={() => projectInput.current?.click()}>Open project</button>
         <button onClick={() => download('diagram.mmd', generated, 'text/plain')}>Export .mmd</button>
@@ -473,7 +501,7 @@ function Editor() {
           onConnect={onConnect}
           connectionMode={ConnectionMode.Loose}
           fitView
-          colorMode="dark"
+          colorMode={theme}
           deleteKeyCode={['Backspace', 'Delete']}
         >
           <Background />
@@ -521,7 +549,7 @@ function Editor() {
           </ul>
         )}
         <h3>Preview</h3>
-        <Preview code={code} onSvg={setSvg} />
+        <Preview code={code} theme={theme} onSvg={setSvg} />
       </section>
     </div>
   );

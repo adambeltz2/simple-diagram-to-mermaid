@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 
 let counter = 0;
 
-export function Preview({ code, onSvg }: { code: string; onSvg: (svg: string) => void }) {
+export function Preview({
+  code,
+  theme,
+  onSvg,
+}: {
+  code: string;
+  theme: 'dark' | 'light';
+  onSvg: (svg: string) => void;
+}) {
   const [svg, setSvg] = useState('');
   const [error, setError] = useState('');
   const onSvgRef = useRef(onSvg);
@@ -14,7 +22,7 @@ export function Preview({ code, onSvg }: { code: string; onSvg: (svg: string) =>
       const id = `mmd-${++counter}`;
       try {
         const mermaid = (await import('mermaid')).default;
-        mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+        mermaid.initialize({ startOnLoad: false, theme: theme === 'dark' ? 'dark' : 'default', securityLevel: 'strict' });
         const out = await mermaid.render(id, code);
         if (cancelled) return;
         setSvg(out.svg);
@@ -29,7 +37,7 @@ export function Preview({ code, onSvg }: { code: string; onSvg: (svg: string) =>
       cancelled = true;
       clearTimeout(t);
     };
-  }, [code]);
+  }, [code, theme]);
 
   return (
     <div className="preview">
