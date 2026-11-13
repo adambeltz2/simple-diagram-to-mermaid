@@ -15,7 +15,7 @@ button.primary { background: var(--accent); color: var(--accent-text); border-co
 button.danger:hover { border-color: var(--danger); color: var(--danger); }
 .sidebar { grid-area: side; background: var(--panel); border-right: 1px solid var(--border); padding: 12px; overflow: auto; }
 .right { grid-area: right; background: var(--panel); border-left: 1px solid var(--border); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
-.canvas { grid-area: canvas; min-width: 0; min-height: 0; }
+.canvas { position: relative; grid-area: canvas; min-width: 0; min-height: 0; }
 h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0; }
 .palette { display: grid; gap: 6px; }
@@ -60,3 +60,5 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 
 .footer { grid-area: foot; display: flex; justify-content: space-between; gap: 12px; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .footer a { color: var(--accent); }
+
+.edge-edit { position: absolute; z-index: 10; transform: translate(-50%, -50%); width: 160px; border-color: var(--accent); }

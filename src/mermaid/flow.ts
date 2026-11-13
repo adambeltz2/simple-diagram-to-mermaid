@@ -38,8 +38,21 @@ export function nextNodeId(existing: Iterable<string>): string {
   }
 }
 
+/** True when the edge points "backwards" against the flow direction. */
+function isBackEdge(dir: Direction, s: GNode, t: GNode): boolean {
+  switch (dir) {
+    case 'TD': return t.y < s.y;
+    case 'BT': return t.y > s.y;
+    case 'LR': return t.x < s.x;
+    case 'RL': return t.x > s.x;
+  }
+}
+
 export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const [sh, th] = HANDLES[graph.direction];
+  // Back-edges loop around the outer side so they don't cut through the nodes.
+  const vertical = graph.direction === 'TD' || graph.direction === 'BT';
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   return {
     nodes: graph.nodes.map((n) => ({
       id: n.id,
@@ -47,15 +60,25 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
       position: { x: n.x, y: n.y },
       data: { label: n.label, shape: n.shape },
     })),
-    edges: graph.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      ...(resetHandles ? { sourceHandle: sh, targetHandle: th } : {}),
-      label: e.label || undefined,
-      data: { style: e.style },
-      ...styleEdge(e.style),
-    })),
+    edges: graph.edges.map((e) => {
+      const s = byId.get(e.source);
+      const t = byId.get(e.target);
+      const back = !!s && !!t && s !== t && isBackEdge(graph.direction, s, t);
+      const side = !s || !t ? 'r' : vertical ? (s.x <= t.x ? 'l' : 'r') : s.y <= t.y ? 't' : 'b';
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        ...(resetHandles
+          ? back
+            ? { sourceHandle: side, targetHandle: side }
+            : { sourceHandle: sh, targetHandle: th }
+          : {}),
+        label: e.label || undefined,
+        data: { style: e.style },
+        ...styleEdge(e.style),
+      };
+    }),
   };
 }
 

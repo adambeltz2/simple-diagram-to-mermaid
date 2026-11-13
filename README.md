@@ -7,7 +7,7 @@ Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canv
 
 ## Features
 - Palette of 7 shapes (rectangle, rounded, stadium, decision, circle, database, hexagon) — drag or click to add
-- Connect nodes by dragging from a node's edge dot; edge styles: `-->`, `---`, `-.->`, `==>`, with labels
+- Connect nodes by dragging from a node's edge dot; edge styles: `-->`, `---`, `-.->`, `==>`, with labels; double-click a line to add or edit its label
 - Direction toggle (TD / LR / BT / RL) and one-click auto layout
 - Live Mermaid code + live rendered preview
 - **Import**: edit the code box and click *Apply to canvas*, or import a `.mmd` / `.md` (```mermaid block) file

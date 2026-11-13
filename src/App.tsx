@@ -98,6 +98,8 @@ function Editor() {
       /* ignore */
     }
   }, [theme]);
+  // Inline label editor shown on double-clicking an edge.
+  const [edgeEdit, setEdgeEdit] = useState<{ id: string; x: number; y: number; value: string } | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [svg, setSvg] = useState('');
@@ -282,6 +284,20 @@ function Editor() {
             },
       ),
     );
+
+  const startEdgeEdit = (e: React.MouseEvent, edge: FlowEdge) => {
+    const rect = wrapper.current?.getBoundingClientRect();
+    setEdgeEdit({
+      id: edge.id,
+      x: e.clientX - (rect?.left ?? 0),
+      y: e.clientY - (rect?.top ?? 0),
+      value: typeof edge.label === 'string' ? edge.label : '',
+    });
+  };
+  const commitEdgeEdit = () => {
+    if (edgeEdit) patchEdge(edgeEdit.id, edgeEdit.value.trim());
+    setEdgeEdit(null);
+  };
 
   const renameNode = (oldId: string, raw: string) => {
     const id = raw.trim().replace(/[^A-Za-z0-9_]/g, '_');
@@ -477,7 +493,7 @@ function Editor() {
         )}
         {!oneNode && !oneEdge && (
           <p className="hint">
-            Select a node or edge to edit it. Double-click a node to rename it. Drag from a node's edge dot to
+            Select a node or edge to edit it. Double-click a node or a line to edit its label. Drag from a node's edge dot to
             another node to connect. Press Delete to remove.
           </p>
         )}
@@ -499,6 +515,8 @@ function Editor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgeDoubleClick={startEdgeEdit}
+          zoomOnDoubleClick={false}
           connectionMode={ConnectionMode.Loose}
           fitView
           colorMode={theme}
@@ -508,6 +526,23 @@ function Editor() {
           <Controls />
           <MiniMap pannable zoomable />
         </ReactFlow>
+        {edgeEdit && (
+          <input
+            className="edge-edit"
+            style={{ left: edgeEdit.x, top: edgeEdit.y }}
+            autoFocus
+            placeholder="Label"
+            value={edgeEdit.value}
+            onChange={(e) => setEdgeEdit({ ...edgeEdit, value: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            onBlur={commitEdgeEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEdgeEdit();
+              else if (e.key === 'Escape') setEdgeEdit(null);
+              e.stopPropagation();
+            }}
+          />
+        )}
       </main>
 
       <footer className="footer">
