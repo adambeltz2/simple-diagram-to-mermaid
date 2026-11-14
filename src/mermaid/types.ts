@@ -14,8 +14,22 @@ export interface GNode {
   id: string;
   label: string;
   shape: Shape;
+  /** id of the containing subgraph, if any */
+  parent?: string;
+  /** absolute canvas position */
   x: number;
   y: number;
+}
+
+/** A Mermaid `subgraph`. Box position/size are absolute canvas values. */
+export interface GGroup {
+  id: string;
+  label: string;
+  parent?: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface GEdge {
@@ -31,6 +45,7 @@ export interface Graph {
   direction: Direction;
   nodes: GNode[];
   edges: GEdge[];
+  groups: GGroup[];
 }
 
 export const SHAPES: { value: Shape; name: string }[] = [

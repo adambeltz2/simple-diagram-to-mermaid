@@ -12,23 +12,27 @@ import {
   useReactFlow,
   type Connection,
 } from '@xyflow/react';
+import { GroupNode } from './canvas/GroupNode';
+import { reparent, ungroup, wrapInGroup } from './canvas/grouping';
 import { ShapeNode } from './canvas/ShapeNode';
 import { Preview } from './Preview';
 import {
   flowToGraph,
   graphToFlow,
   newId,
+  nextGroupId,
   nextNodeId,
+  orderNodes,
   styleEdge,
   type FlowEdge,
   type FlowNode,
 } from './mermaid/flow';
-import { autoLayout } from './mermaid/layout';
+import { autoLayout, fitGroups } from './mermaid/layout';
 import { parseMermaid } from './mermaid/parse';
 import { toMermaid } from './mermaid/serialize';
 import { EDGE_STYLES, SHAPES, type Direction, type EdgeStyle, type Graph, type Shape } from './mermaid/types';
 
-const nodeTypes = { shape: ShapeNode };
+const nodeTypes = { shape: ShapeNode, group: GroupNode };
 const STORAGE_KEY = 'sdtm:graph:v1';
 const THEME_KEY = 'sdtm:theme';
 type Theme = 'dark' | 'light';
@@ -45,6 +49,7 @@ function initialTheme(): Theme {
 
 const STARTER: Graph = autoLayout({
   direction: 'TD',
+  groups: [],
   nodes: [
     { id: 'A', label: 'Start', shape: 'stadium', x: 0, y: 0 },
     { id: 'B', label: 'Is it working?', shape: 'diamond', x: 0, y: 0 },
@@ -64,7 +69,7 @@ function loadInitial(): Graph {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const g = JSON.parse(raw) as Graph;
-      if (Array.isArray(g.nodes) && Array.isArray(g.edges)) return g;
+      if (Array.isArray(g.nodes) && Array.isArray(g.edges)) return { ...g, groups: g.groups ?? [] };
     }
   } catch {
     /* ignore */
@@ -112,7 +117,15 @@ function Editor() {
   type Snap = { direction: Direction; nodes: FlowNode[]; edges: FlowEdge[] };
   const makeSnap = (): Snap => ({
     direction,
-    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
+    nodes: nodes.map(({ id, type, position, data, parentId, width, height }) => ({
+      id,
+      type,
+      position,
+      data,
+      parentId,
+      width,
+      height,
+    })),
     edges: edges.map(({ selected: _s, ...e }) => e),
   });
   const past = useRef<Snap[]>([]);
@@ -214,13 +227,13 @@ function Editor() {
     const anyKnown = parsed.nodes.some((n) => known.has(n.id));
     // Keep positions of nodes the user already placed; only lay out brand-new ones.
     const laid = autoLayout(parsed);
-    const merged: Graph = {
+    const merged: Graph = fitGroups({
       ...parsed,
       nodes: laid.nodes.map((n) => {
         const k = known.get(n.id);
         return anyKnown && k ? { ...n, x: k.x, y: k.y } : n;
       }),
-    };
+    });
     load(merged, true);
     setWarnings(w);
     setDraft(null);
@@ -247,6 +260,42 @@ function Editor() {
     [setNodes, screenToFlowPosition],
   );
 
+  const addGroup = useCallback(
+    (position?: { x: number; y: number }) => {
+      setNodes((ns) => {
+        const id = nextGroupId(ns.map((n) => n.id));
+        const rect = wrapper.current?.getBoundingClientRect();
+        const pos =
+          position ??
+          screenToFlowPosition({
+            x: (rect?.left ?? 0) + (rect?.width ?? 400) / 2 - 130,
+            y: (rect?.top ?? 0) + (rect?.height ?? 300) / 2 - 80,
+          });
+        const g: FlowNode = {
+          id,
+          type: 'group',
+          position: pos,
+          width: 260,
+          height: 160,
+          selected: true,
+          data: { label: 'Group', shape: 'rect' },
+        };
+        return reparent(orderNodes([...ns.map((n) => ({ ...n, selected: false })), g]), id);
+      });
+    },
+    [setNodes, screenToFlowPosition],
+  );
+
+  /** Wrap the selected shape nodes in a new group sized to fit them. */
+  const groupSelection = () =>
+    setNodes((ns) =>
+      wrapInGroup(
+        ns,
+        ns.filter((n) => n.selected && n.type !== 'group').map((n) => n.id),
+        nextGroupId(ns.map((n) => n.id)),
+      ),
+    );
+
   const onConnect = useCallback(
     (c: Connection) =>
       setEdges((es) =>
@@ -257,10 +306,11 @@ function Editor() {
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const shape = e.dataTransfer.getData('application/x-shape') as Shape;
+    const shape = e.dataTransfer.getData('application/x-shape');
     if (!shape) return;
     const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    addNode(shape, { x: p.x - 55, y: p.y - 25 });
+    if (shape === 'group') addGroup({ x: p.x - 130, y: p.y - 30 });
+    else addNode(shape as Shape, { x: p.x - 55, y: p.y - 25 });
   };
 
   // ---- selection / inspector ---------------------------------------------
@@ -331,7 +381,7 @@ function Editor() {
       try {
         const g = JSON.parse(text) as Graph;
         if (!Array.isArray(g.nodes) || !Array.isArray(g.edges)) throw new Error();
-        load(g, true);
+        load({ ...g, groups: g.groups ?? [] }, true);
         setWarnings([]);
         setDraft(null);
       } catch {
@@ -431,6 +481,16 @@ function Editor() {
               {s.name}
             </button>
           ))}
+          <button
+            className="palette-item"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/x-shape', 'group')}
+            onClick={() => addGroup()}
+            title="A Mermaid subgraph. Drop nodes inside it."
+          >
+            <span className="swatch swatch-group" />
+            Group
+          </button>
         </div>
 
         <h3>Inspector</h3>
@@ -444,6 +504,7 @@ function Editor() {
                 onChange={(e) => patchNode(oneNode.id, { label: e.target.value })}
               />
             </label>
+            {oneNode.type !== 'group' && (
             <label>
               Shape
               <select value={oneNode.data.shape} onChange={(e) => patchNode(oneNode.id, { shape: e.target.value as Shape })}>
@@ -454,6 +515,7 @@ function Editor() {
                 ))}
               </select>
             </label>
+            )}
             <label>
               ID
               <input
@@ -491,10 +553,24 @@ function Editor() {
             </label>
           </div>
         )}
-        {!oneNode && !oneEdge && (
+        {oneNode?.type === 'group' && (
+          <button
+            className="wide"
+            onClick={() => setNodes((ns) => ungroup(ns, oneNode.id))}
+            title="Remove the box but keep the nodes inside"
+          >
+            Ungroup (keep nodes)
+          </button>
+        )}
+        {selNode.some((n) => n.type !== 'group') && selEdge.length === 0 && (
+          <button className="wide" onClick={groupSelection} title="Wrap the selected nodes in a subgraph">
+            Group selection
+          </button>
+        )}
+        {!oneNode && !oneEdge && selNode.length === 0 && (
           <p className="hint">
             Select a node or edge to edit it. Double-click a node or a line to edit its label. Drag from a node's edge dot to
-            another node to connect. Press Delete to remove.
+            another node to connect. Press Delete to remove. Drop nodes into a Group box to make a Mermaid subgraph (deleting a group deletes its contents; use Ungroup to keep them). Ctrl+Z / Ctrl+Shift+Z to undo / redo.
           </p>
         )}
       </aside>
@@ -516,6 +592,9 @@ function Editor() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeDoubleClick={startEdgeEdit}
+          onNodeDragStop={(_, node, dragged) =>
+            setNodes((ns) => (dragged.length ? dragged : [node]).reduce((acc, d) => reparent(acc, d.id), ns))
+          }
           zoomOnDoubleClick={false}
           connectionMode={ConnectionMode.Loose}
           fitView
@@ -552,7 +631,7 @@ function Editor() {
         </a>
       </footer>
 
-      <section className="right">
+      <section className="side-right">
         <div className="code-head">
           <h3>Mermaid</h3>
           <span className="spacer" />

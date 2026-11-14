@@ -1,8 +1,12 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
-import type { Direction, EdgeStyle, GEdge, GNode, Graph, Shape } from './types';
+import type { Direction, EdgeStyle, GEdge, GGroup, GNode, Graph, Shape } from './types';
 
-export type ShapeNodeData = { label: string; shape: Shape };
-export type FlowNode = Node<ShapeNodeData, 'shape'>;
+/**
+ * One data shape for both node kinds: `type: 'shape'` is a normal node,
+ * `type: 'group'` is a subgraph box (its `shape` is unused).
+ */
+export type NodeData = { label: string; shape: Shape };
+export type FlowNode = Node<NodeData, 'shape' | 'group'>;
 export type EdgeData = { style: EdgeStyle };
 export type FlowEdge = Edge<EdgeData>;
 
@@ -38,6 +42,46 @@ export function nextNodeId(existing: Iterable<string>): string {
   }
 }
 
+/** Next free sub1, sub2, … id for a subgraph (can't clash with nextNodeId). */
+export function nextGroupId(existing: Iterable<string>): string {
+  const used = new Set(existing);
+  for (let i = 1; ; i++) if (!used.has(`sub${i}`)) return `sub${i}`;
+}
+
+export function sizeOf(n: FlowNode): { w: number; h: number } {
+  const fallback = n.type === 'group' ? { w: 200, h: 120 } : { w: 120, h: 50 };
+  return {
+    w: n.width ?? n.measured?.width ?? fallback.w,
+    h: n.height ?? n.measured?.height ?? fallback.h,
+  };
+}
+
+/** Absolute canvas position (React Flow stores children relative to their parent). */
+export function absPos(n: FlowNode, byId: Map<string, FlowNode>): { x: number; y: number } {
+  let { x, y } = n.position;
+  const seen = new Set<string>([n.id]);
+  for (let p = n.parentId; p && byId.has(p) && !seen.has(p); ) {
+    seen.add(p);
+    const pn = byId.get(p)!;
+    x += pn.position.x;
+    y += pn.position.y;
+    p = pn.parentId;
+  }
+  return { x, y };
+}
+
+/** React Flow needs parents before children; keep all groups ahead of shapes. */
+export function orderNodes(ns: FlowNode[]): FlowNode[] {
+  const byId = new Map(ns.map((n) => [n.id, n]));
+  const depth = (n: FlowNode) => {
+    let d = 0;
+    for (let p = n.parentId; p && byId.has(p) && d < 50; p = byId.get(p)!.parentId) d++;
+    return d;
+  };
+  const groups = ns.filter((n) => n.type === 'group').sort((a, b) => depth(a) - depth(b));
+  return [...groups, ...ns.filter((n) => n.type !== 'group')];
+}
+
 /** True when the edge points "backwards" against the flow direction. */
 function isBackEdge(dir: Direction, s: GNode, t: GNode): boolean {
   switch (dir) {
@@ -53,13 +97,32 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
   // Back-edges loop around the outer side so they don't cut through the nodes.
   const vertical = graph.direction === 'TD' || graph.direction === 'BT';
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const groupById = new Map(graph.groups.map((g) => [g.id, g]));
+
+  const rel = (x: number, y: number, parent?: string) => {
+    const p = parent ? groupById.get(parent) : undefined;
+    return p ? { x: x - p.x, y: y - p.y } : { x, y };
+  };
+
+  const groupNodes: FlowNode[] = graph.groups.map((g) => ({
+    id: g.id,
+    type: 'group' as const,
+    position: rel(g.x, g.y, g.parent),
+    width: g.w,
+    height: g.h,
+    parentId: g.parent && groupById.has(g.parent) ? g.parent : undefined,
+    data: { label: g.label, shape: 'rect' as Shape },
+  }));
+  const shapeNodes: FlowNode[] = graph.nodes.map((n) => ({
+    id: n.id,
+    type: 'shape' as const,
+    position: rel(n.x, n.y, n.parent),
+    parentId: n.parent && groupById.has(n.parent) ? n.parent : undefined,
+    data: { label: n.label, shape: n.shape },
+  }));
+
   return {
-    nodes: graph.nodes.map((n) => ({
-      id: n.id,
-      type: 'shape' as const,
-      position: { x: n.x, y: n.y },
-      data: { label: n.label, shape: n.shape },
-    })),
+    nodes: orderNodes([...groupNodes, ...shapeNodes]),
     edges: graph.edges.map((e) => {
       const s = byId.get(e.source);
       const t = byId.get(e.target);
@@ -83,13 +146,39 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
 }
 
 export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: FlowEdge[]): Graph {
-  const gn: GNode[] = nodes.map((n) => ({
-    id: n.id,
-    label: n.data.label,
-    shape: n.data.shape,
-    x: n.position.x,
-    y: n.position.y,
-  }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const isGroup = (id?: string) => !!id && byId.get(id)?.type === 'group';
+
+  const groups: GGroup[] = nodes
+    .filter((n) => n.type === 'group')
+    .map((n) => {
+      const { x, y } = absPos(n, byId);
+      const { w, h } = sizeOf(n);
+      return {
+        id: n.id,
+        label: n.data.label,
+        parent: isGroup(n.parentId) ? n.parentId : undefined,
+        x: Math.round(x),
+        y: Math.round(y),
+        w: Math.round(w),
+        h: Math.round(h),
+      };
+    });
+
+  const gn: GNode[] = nodes
+    .filter((n) => n.type !== 'group')
+    .map((n) => {
+      const { x, y } = absPos(n, byId);
+      return {
+        id: n.id,
+        label: n.data.label,
+        shape: n.data.shape,
+        parent: isGroup(n.parentId) ? n.parentId : undefined,
+        x,
+        y,
+      };
+    });
+
   const ids = new Set(gn.map((n) => n.id));
   const ge: GEdge[] = edges
     .filter((e) => ids.has(e.source) && ids.has(e.target))
@@ -100,5 +189,5 @@ export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: Flow
       label: typeof e.label === 'string' ? e.label : '',
       style: e.data?.style ?? 'arrow',
     }));
-  return { direction, nodes: gn, edges: ge };
+  return { direction, nodes: gn, edges: ge, groups };
 }

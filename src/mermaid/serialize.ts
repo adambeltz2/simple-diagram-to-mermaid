@@ -36,20 +36,44 @@ export function quoteLabel(label: string): string {
 }
 
 export function toMermaid(graph: Graph): string {
+  // Nodes and subgraphs share one id namespace in Mermaid.
   const ids = new Map<string, string>();
   const used = new Set<string>();
-  for (const n of graph.nodes) {
-    let id = safeId(n.id);
+  const assign = (raw: string) => {
+    let id = safeId(raw);
     while (used.has(id)) id += '_';
     used.add(id);
-    ids.set(n.id, id);
-  }
+    ids.set(raw, id);
+  };
+  graph.groups.forEach((g) => assign(g.id));
+  graph.nodes.forEach((n) => assign(n.id));
+
+  const groupIds = new Set(graph.groups.map((g) => g.id));
+  const parentOf = (p?: string) => (p && groupIds.has(p) ? p : undefined);
 
   const lines = [`flowchart ${graph.direction}`];
-  for (const n of graph.nodes) {
-    const [open, close] = WRAP[n.shape];
-    lines.push(`    ${ids.get(n.id)}${open}${quoteLabel(n.label)}${close}`);
-  }
+
+  const emitNodes = (parent: string | undefined, indent: string) => {
+    for (const n of graph.nodes) {
+      if (parentOf(n.parent) !== parent) continue;
+      const [open, close] = WRAP[n.shape];
+      lines.push(`${indent}${ids.get(n.id)}${open}${quoteLabel(n.label)}${close}`);
+    }
+  };
+  const emitGroups = (parent: string | undefined, indent: string, seen: Set<string>) => {
+    for (const g of graph.groups) {
+      if (parentOf(g.parent) !== parent || seen.has(g.id)) continue;
+      seen.add(g.id);
+      lines.push(`${indent}subgraph ${ids.get(g.id)}[${quoteLabel(g.label)}]`);
+      emitNodes(g.id, indent + '    ');
+      emitGroups(g.id, indent + '    ', seen);
+      lines.push(`${indent}end`);
+    }
+  };
+
+  emitNodes(undefined, '    ');
+  emitGroups(undefined, '    ', new Set());
+
   for (const e of graph.edges) {
     const s = ids.get(e.source);
     const t = ids.get(e.target);

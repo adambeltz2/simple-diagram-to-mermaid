@@ -4,6 +4,7 @@ import type { Graph } from './types';
 
 const g = (direction: Graph['direction'], b: { x: number; y: number }): Graph => ({
   direction,
+  groups: [],
   nodes: [
     { id: 'A', label: 'A', shape: 'rect', x: 100, y: 100 },
     { id: 'B', label: 'B', shape: 'rect', ...b },

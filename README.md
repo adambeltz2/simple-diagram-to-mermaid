@@ -8,6 +8,7 @@ Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canv
 ## Features
 - Palette of 7 shapes (rectangle, rounded, stadium, decision, circle, database, hexagon) — drag or click to add
 - Connect nodes by dragging from a node's edge dot; edge styles: `-->`, `---`, `-.->`, `==>`, with labels; double-click a line to add or edit its label
+- **Subgraphs**: a *Group* box on the canvas = Mermaid `subgraph … end` (nesting supported). Drop nodes in, select nodes and click *Group selection*, or *Ungroup* to keep the nodes
 - Direction toggle (TD / LR / BT / RL) and one-click auto layout
 - Live Mermaid code + live rendered preview
 - **Import**: edit the code box and click *Apply to canvas*, or import a `.mmd` / `.md` (```mermaid block) file
@@ -22,7 +23,7 @@ The source of truth is a graph model (`src/mermaid/types.ts`). The canvas edits 
 Node positions are a canvas convenience only — Mermaid lays out its own diagrams.
 
 ## Not supported yet
-Subgraphs (flattened on import), `classDef`/`style`, other diagram types.
+`classDef`/`style`, edges to/from a whole subgraph, other diagram types.
 Unsupported lines are reported as warnings on import.
 
 ## Develop

@@ -1,4 +1,4 @@
-import type { Direction, EdgeStyle, GEdge, GNode, Graph, Shape } from './types';
+import type { Direction, EdgeStyle, GEdge, GGroup, GNode, Graph, Shape } from './types';
 
 export interface ParseResult {
   graph: Graph;
@@ -129,19 +129,52 @@ function parseEdgeOp(s: string): { style: EdgeStyle; label: string; rest: string
 export function parseMermaid(text: string): ParseResult {
   const warnings: string[] = [];
   const nodes = new Map<string, GNode>();
+  const groups = new Map<string, GGroup>();
+  const stack: string[] = [];
   const edges: GEdge[] = [];
   let direction: Direction = 'TD';
   let sawHeader = false;
-  let sawSubgraph = false;
+
+  const current = () => stack[stack.length - 1];
 
   const touch = (r: NodeRef) => {
     const existing = nodes.get(r.id);
     if (!existing) {
-      nodes.set(r.id, { id: r.id, label: r.label ?? r.id, shape: r.shape ?? 'rect', x: 0, y: 0 });
-    } else if (r.shape) {
-      existing.label = r.label ?? existing.label;
-      existing.shape = r.shape;
+      nodes.set(r.id, {
+        id: r.id,
+        label: r.label ?? r.id,
+        shape: r.shape ?? 'rect',
+        parent: current(),
+        x: 0,
+        y: 0,
+      });
+    } else {
+      if (r.shape) {
+        existing.label = r.label ?? existing.label;
+        existing.shape = r.shape;
+      }
+      if (!existing.parent && current()) existing.parent = current();
     }
+  };
+
+  const openGroup = (rest: string) => {
+    let id: string | undefined;
+    let label: string;
+    let m: RegExpExecArray | null;
+    if ((m = /^([A-Za-z0-9_]+)\s*\[(.*)\]\s*$/.exec(rest))) {
+      id = m[1];
+      label = unquoteLabel(m[2]);
+    } else if (/^[A-Za-z0-9_]+$/.test(rest)) {
+      id = rest;
+      label = rest;
+    } else {
+      label = unquoteLabel(rest);
+    }
+    let base = id ?? (label.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'group');
+    let unique = base;
+    for (let n = 2; groups.has(unique) || nodes.has(unique); n++) unique = `${base}_${n}`;
+    groups.set(unique, { id: unique, label, parent: current(), x: 0, y: 0, w: 200, h: 120 });
+    stack.push(unique);
   };
 
   const lines = text.split(/\r?\n/);
@@ -158,9 +191,13 @@ export function parseMermaid(text: string): ParseResult {
         direction = (d === 'TB' ? 'TD' : d) as Direction;
         continue;
       }
-      if (/^(end)$/i.test(stmt)) continue;
-      if (/^subgraph\b/i.test(stmt)) {
-        sawSubgraph = true;
+      if (/^end$/i.test(stmt)) {
+        stack.pop();
+        continue;
+      }
+      const sub = /^subgraph\s+(.+)$/i.exec(stmt);
+      if (sub) {
+        openGroup(sub[1].trim());
         continue;
       }
       if (/^(direction|classDef|class|style|linkStyle|click)\b/i.test(stmt)) {
@@ -177,6 +214,10 @@ export function parseMermaid(text: string): ParseResult {
         warnings.push(`Line ${lineNo}: could not parse "${stmt}".`);
         continue;
       }
+      if (group.refs.some((r) => groups.has(r.id))) {
+        warnings.push(`Line ${lineNo}: edges to/from a subgraph are not supported; line ignored.`);
+        continue;
+      }
       group.refs.forEach(touch);
       let rest = group.rest.trim();
       while (rest) {
@@ -188,6 +229,10 @@ export function parseMermaid(text: string): ParseResult {
         const next = parseNodeGroup(op.rest);
         if (!next) {
           warnings.push(`Line ${lineNo}: edge has no target.`);
+          break;
+        }
+        if (next.refs.some((r) => groups.has(r.id))) {
+          warnings.push(`Line ${lineNo}: edges to/from a subgraph are not supported; edge ignored.`);
           break;
         }
         next.refs.forEach(touch);
@@ -207,7 +252,10 @@ export function parseMermaid(text: string): ParseResult {
   });
 
   if (!sawHeader && nodes.size > 0) warnings.push('No "flowchart TD" header found; assumed TD.');
-  if (sawSubgraph) warnings.push('Subgraphs are not supported yet; their nodes were flattened.');
+  if (stack.length) warnings.push('A "subgraph" is missing its "end".');
 
-  return { graph: { direction, nodes: [...nodes.values()], edges }, warnings };
+  return {
+    graph: { direction, nodes: [...nodes.values()], edges, groups: [...groups.values()] },
+    warnings,
+  };
 }

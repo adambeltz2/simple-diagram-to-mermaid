@@ -5,6 +5,7 @@ import type { Graph } from './types';
 
 const sample: Graph = {
   direction: 'LR',
+  groups: [],
   nodes: [
     { id: 'A', label: 'Start', shape: 'stadium', x: 0, y: 0 },
     { id: 'B', label: 'Is it "ok"? (y/n)', shape: 'diamond', x: 0, y: 0 },
@@ -36,6 +37,7 @@ describe('serialize', () => {
   it('sanitizes reserved and duplicate ids', () => {
     const out = toMermaid({
       direction: 'TD',
+      groups: [],
       nodes: [
         { id: 'end', label: 'x', shape: 'rect', x: 0, y: 0 },
         { id: 'a b', label: 'y', shape: 'rect', x: 0, y: 0 },
@@ -94,6 +96,76 @@ describe('parse hand-written mermaid', () => {
         C --> D
       end`);
     expect(graph.edges.map((e) => `${e.source}>${e.target}`)).toEqual(['A>C', 'B>C', 'C>D']);
-    expect(warnings.length).toBe(2);
+    expect(warnings.length).toBe(1);
+  });
+});
+
+describe('subgraphs', () => {
+  it('parses titles, nesting and membership', () => {
+    const { graph, warnings } = parseMermaid(`flowchart TD
+      X --> A
+      subgraph one [First Group]
+        A --> B
+        subgraph "Inner Box"
+          C
+        end
+      end
+      subgraph two["Second"]
+        D
+      end
+      B --> D`);
+    expect(warnings).toEqual([]);
+    expect(graph.groups.map((g) => [g.id, g.label, g.parent])).toEqual([
+      ['one', 'First Group', undefined],
+      ['Inner_Box', 'Inner Box', 'one'],
+      ['two', 'Second', undefined],
+    ]);
+    const parent = Object.fromEntries(graph.nodes.map((n) => [n.id, n.parent]));
+    // X was first seen outside; A first seen outside too (via X --> A)
+    expect(parent).toEqual({ X: undefined, A: 'one', B: 'one', C: 'Inner_Box', D: 'two' });
+  });
+
+  it('warns and ignores edges to a subgraph, and unclosed subgraphs', () => {
+    const { graph, warnings } = parseMermaid(`flowchart TD
+      subgraph S
+        A
+      end
+      B --> S
+      subgraph T
+        C`);
+    expect(graph.edges).toEqual([]);
+    expect(warnings.some((w) => w.includes('edges to/from a subgraph'))).toBe(true);
+    expect(warnings.some((w) => w.includes('missing its "end"'))).toBe(true);
+  });
+
+  it('serializes nested groups and round-trips', () => {
+    const g: Graph = {
+      direction: 'TD',
+      groups: [
+        { id: 'outer', label: 'Outer (1)', x: 0, y: 0, w: 10, h: 10 },
+        { id: 'inner', label: 'Inner', parent: 'outer', x: 0, y: 0, w: 10, h: 10 },
+      ],
+      nodes: [
+        { id: 'A', label: 'a', shape: 'rect', parent: 'inner', x: 0, y: 0 },
+        { id: 'B', label: 'b', shape: 'round', parent: 'outer', x: 0, y: 0 },
+        { id: 'C', label: 'c', shape: 'rect', x: 0, y: 0 },
+      ],
+      edges: [{ id: 'e1', source: 'A', target: 'C', label: '', style: 'arrow' }],
+    };
+    const text = toMermaid(g);
+    expect(text).toContain('subgraph outer["Outer (1)"]');
+    expect(text.indexOf('subgraph inner')).toBeGreaterThan(text.indexOf('subgraph outer'));
+    expect(text.match(/\bend\b/g)?.length).toBe(2);
+    const back = parseMermaid(text);
+    expect(back.warnings).toEqual([]);
+    expect(back.graph.groups.map((x) => [x.id, x.label, x.parent])).toEqual([
+      ['outer', 'Outer (1)', undefined],
+      ['inner', 'Inner', 'outer'],
+    ]);
+    expect(Object.fromEntries(back.graph.nodes.map((n) => [n.id, n.parent]))).toEqual({
+      A: 'inner',
+      B: 'outer',
+      C: undefined,
+    });
   });
 });
