@@ -12,11 +12,14 @@ import {
   useReactFlow,
   type Connection,
 } from '@xyflow/react';
+import { ColorField } from './canvas/ColorField';
 import { GroupNode } from './canvas/GroupNode';
+import { StyleContext } from './canvas/StyleContext';
 import { reparent, ungroup, wrapInGroup } from './canvas/grouping';
 import { ShapeNode } from './canvas/ShapeNode';
 import { Preview } from './Preview';
 import {
+  MARKER,
   flowToGraph,
   graphToFlow,
   newId,
@@ -24,13 +27,26 @@ import {
   nextNodeId,
   orderNodes,
   styleEdge,
+  type EdgeData,
   type FlowEdge,
   type FlowNode,
 } from './mermaid/flow';
-import { autoLayout, fitGroups } from './mermaid/layout';
+import { autoLayout, fitGroups, shouldKeepPositions } from './mermaid/layout';
 import { parseMermaid } from './mermaid/parse';
 import { toMermaid } from './mermaid/serialize';
-import { EDGE_STYLES, SHAPES, type Direction, type EdgeStyle, type Graph, type Shape } from './mermaid/types';
+import { metaOf, normalizeGraph } from './mermaid/normalize';
+import {
+  END_PRESETS,
+  LINES,
+  SHAPES,
+  effectiveCss,
+  type Css,
+  type Direction,
+  type Graph,
+  type GraphMeta,
+  type Line,
+  type Shape,
+} from './mermaid/types';
 
 const nodeTypes = { shape: ShapeNode, group: GroupNode };
 const STORAGE_KEY = 'sdtm:graph:v1';
@@ -57,25 +73,25 @@ const STARTER: Graph = autoLayout({
     { id: 'D', label: 'Debug', shape: 'rect', x: 0, y: 0 },
   ],
   edges: [
-    { id: 'e1', source: 'A', target: 'B', label: '', style: 'arrow' },
-    { id: 'e2', source: 'B', target: 'C', label: 'yes', style: 'arrow' },
-    { id: 'e3', source: 'B', target: 'D', label: 'no', style: 'arrow' },
-    { id: 'e4', source: 'D', target: 'B', label: '', style: 'dotted' },
+    { id: 'e1', source: 'A', target: 'B', label: '', line: 'solid', head: 'arrow', tail: 'none' },
+    { id: 'e2', source: 'B', target: 'C', label: 'yes', line: 'solid', head: 'arrow', tail: 'none' },
+    { id: 'e3', source: 'B', target: 'D', label: 'no', line: 'solid', head: 'arrow', tail: 'none' },
+    { id: 'e4', source: 'D', target: 'B', label: '', line: 'dotted', head: 'arrow', tail: 'none' },
   ],
 });
 
 function loadInitial(): Graph {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const g = JSON.parse(raw) as Graph;
-      if (Array.isArray(g.nodes) && Array.isArray(g.edges)) return { ...g, groups: g.groups ?? [] };
-    }
+    const g = raw ? normalizeGraph(JSON.parse(raw)) : null;
+    if (g) return g;
   } catch {
     /* ignore */
   }
   return STARTER;
 }
+
+const EMPTY_DEFS: Record<string, Css> = {};
 
 function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
@@ -92,6 +108,7 @@ function Editor() {
     return { g, ...graphToFlow(g, true) };
   }, []);
   const [direction, setDirection] = useState<Direction>(initial.g.direction);
+  const [meta, setMeta] = useState<GraphMeta>(() => metaOf(initial.g));
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(initial.edges);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -114,9 +131,10 @@ function Editor() {
   const projectInput = useRef<HTMLInputElement>(null);
 
   // ---- undo / redo --------------------------------------------------------
-  type Snap = { direction: Direction; nodes: FlowNode[]; edges: FlowEdge[] };
+  type Snap = { direction: Direction; meta: GraphMeta; nodes: FlowNode[]; edges: FlowEdge[] };
   const makeSnap = (): Snap => ({
     direction,
+    meta,
     nodes: nodes.map(({ id, type, position, data, parentId, width, height }) => ({
       id,
       type,
@@ -132,6 +150,7 @@ function Editor() {
   const future = useRef<Snap[]>([]);
   const lastSnap = useRef<Snap>({
     direction: initial.g.direction,
+    meta: metaOf(initial.g),
     nodes: initial.nodes,
     edges: initial.edges,
   });
@@ -155,12 +174,13 @@ function Editor() {
   useEffect(() => {
     const t = setTimeout(() => commitRef.current(), 300);
     return () => clearTimeout(t);
-  }, [nodes, edges, direction]);
+  }, [nodes, edges, direction, meta]);
 
   const restore = (s: Snap) => {
     lastSnap.current = s;
     lastKey.current = JSON.stringify(s);
     setDirection(s.direction);
+    setMeta(s.meta);
     setNodes(s.nodes);
     setEdges(s.edges);
     setTick((t) => t + 1);
@@ -198,7 +218,7 @@ function Editor() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const graph = useMemo(() => flowToGraph(direction, nodes, edges), [direction, nodes, edges]);
+  const graph = useMemo(() => flowToGraph(direction, nodes, edges, meta), [direction, nodes, edges, meta]);
   const generated = useMemo(() => toMermaid(graph), [graph]);
 
   useEffect(() => {
@@ -213,6 +233,7 @@ function Editor() {
     (g: Graph, resetHandles = true) => {
       const f = graphToFlow(g, resetHandles);
       setDirection(g.direction);
+      setMeta(metaOf(g));
       setNodes(f.nodes);
       setEdges(f.edges);
       setTimeout(() => fitView({ padding: 0.2 }), 50);
@@ -224,8 +245,8 @@ function Editor() {
   const applyText = (text: string) => {
     const { graph: parsed, warnings: w } = parseMermaid(text);
     const known = new Map(graph.nodes.map((n) => [n.id, n]));
-    const anyKnown = parsed.nodes.some((n) => known.has(n.id));
-    // Keep positions of nodes the user already placed; only lay out brand-new ones.
+    // Small edits keep the user's placement; a different diagram gets a fresh layout.
+    const anyKnown = shouldKeepPositions(parsed.nodes, known);
     const laid = autoLayout(parsed);
     const merged: Graph = fitGroups({
       ...parsed,
@@ -299,7 +320,15 @@ function Editor() {
   const onConnect = useCallback(
     (c: Connection) =>
       setEdges((es) =>
-        addEdge({ ...c, id: newId('e'), data: { style: 'arrow' as EdgeStyle }, ...styleEdge('arrow') }, es),
+        addEdge(
+          {
+            ...c,
+            id: newId('e'),
+            data: { line: 'solid', head: 'arrow', tail: 'none' } as EdgeData,
+            ...styleEdge({ line: 'solid', head: 'arrow', tail: 'none' }),
+          },
+          es,
+        ),
       ),
     [setEdges],
   );
@@ -322,17 +351,30 @@ function Editor() {
   const patchNode = (id: string, data: Partial<FlowNode['data']>) =>
     setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
 
-  const patchEdge = (id: string, label?: string, style?: EdgeStyle) =>
+  /** Set (or clear, when `value` is undefined) one `style` property on a node or group. */
+  const patchCss = (id: string, key: string, value: string | undefined) =>
+    setNodes((ns) =>
+      ns.map((n) => {
+        if (n.id !== id) return n;
+        const css: Css = { ...n.data.css };
+        if (value === undefined) delete css[key];
+        else css[key] = value;
+        return { ...n, data: { ...n.data, css: Object.keys(css).length ? css : undefined } };
+      }),
+    );
+
+  const patchEdge = (id: string, patch: { label?: string; data?: Partial<EdgeData> }) =>
     setEdges((es) =>
-      es.map((e) =>
-        e.id !== id
-          ? e
-          : {
-              ...e,
-              ...(label !== undefined ? { label: label || undefined } : {}),
-              ...(style ? { data: { style }, ...styleEdge(style) } : {}),
-            },
-      ),
+      es.map((e) => {
+        if (e.id !== id) return e;
+        const data: EdgeData = { line: 'solid', head: 'arrow', tail: 'none', ...e.data, ...patch.data };
+        if (patch.data && 'css' in patch.data && !patch.data.css) delete data.css;
+        return {
+          ...e,
+          ...(patch.label !== undefined ? { label: patch.label || undefined } : {}),
+          ...(patch.data ? { data, ...styleEdge(data) } : {}),
+        };
+      }),
     );
 
   const startEdgeEdit = (e: React.MouseEvent, edge: FlowEdge) => {
@@ -345,7 +387,7 @@ function Editor() {
     });
   };
   const commitEdgeEdit = () => {
-    if (edgeEdit) patchEdge(edgeEdit.id, edgeEdit.value.trim());
+    if (edgeEdit) patchEdge(edgeEdit.id, { label: edgeEdit.value.trim() });
     setEdgeEdit(null);
   };
 
@@ -379,9 +421,9 @@ function Editor() {
   const importProject = (file: File) =>
     readFile(file, (text) => {
       try {
-        const g = JSON.parse(text) as Graph;
-        if (!Array.isArray(g.nodes) || !Array.isArray(g.edges)) throw new Error();
-        load({ ...g, groups: g.groups ?? [] }, true);
+        const g = normalizeGraph(JSON.parse(text));
+        if (!g) throw new Error();
+        load(g, true);
         setWarnings([]);
         setDraft(null);
       } catch {
@@ -434,6 +476,7 @@ function Editor() {
             if (confirm('Clear the canvas?')) {
               setNodes([]);
               setEdges([]);
+              setMeta({});
               setDraft(null);
               setWarnings([]);
             }
@@ -505,17 +548,49 @@ function Editor() {
               />
             </label>
             {oneNode.type !== 'group' && (
-            <label>
-              Shape
-              <select value={oneNode.data.shape} onChange={(e) => patchNode(oneNode.id, { shape: e.target.value as Shape })}>
-                {SHAPES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label>
+                Shape
+                <select
+                  value={oneNode.data.shape}
+                  onChange={(e) => patchNode(oneNode.id, { shape: e.target.value as Shape })}
+                >
+                  {SHAPES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
+            {oneNode.type === 'group' && (
+              <label>
+                Direction inside
+                <select
+                  value={oneNode.data.direction ?? ''}
+                  onChange={(e) => patchNode(oneNode.id, { direction: (e.target.value || undefined) as Direction | undefined })}
+                >
+                  <option value="">Same as diagram</option>
+                  <option value="TD">Top → Down</option>
+                  <option value="LR">Left → Right</option>
+                  <option value="BT">Bottom → Up</option>
+                  <option value="RL">Right → Left</option>
+                </select>
+              </label>
+            )}
+            {(() => {
+              const fx = effectiveCss(oneNode.data.classes, meta.classDefs, oneNode.data.css);
+              const own = oneNode.data.css ?? {};
+              return (
+                <>
+                  <ColorField label="Fill" shown={fx.fill} own={own.fill} fallback="#ffffff" onChange={(v) => patchCss(oneNode.id, 'fill', v)} />
+                  <ColorField label="Border" shown={fx.stroke} own={own.stroke} fallback="#5b9dff" onChange={(v) => patchCss(oneNode.id, 'stroke', v)} />
+                  <ColorField label="Text" shown={fx.color} own={own.color} fallback="#1c2128" onChange={(v) => patchCss(oneNode.id, 'color', v)} />
+                </>
+              );
+            })()}
+            {oneNode.data.classes?.length ? (
+              <p className="hint">Mermaid classes: {oneNode.data.classes.join(', ')} (kept on export)</p>
+            ) : null}
             <label>
               ID
               <input
@@ -529,30 +604,64 @@ function Editor() {
             </label>
           </div>
         )}
-        {oneEdge && (
-          <div className="inspector">
-            <label>
-              Label
-              <input
-                value={typeof oneEdge.label === 'string' ? oneEdge.label : ''}
-                onChange={(e) => patchEdge(oneEdge.id, e.target.value)}
+        {oneEdge && (() => {
+          const d: EdgeData = { line: 'solid', head: 'arrow', tail: 'none', ...oneEdge.data };
+          const preset = END_PRESETS.find((p) => p.head === d.head && p.tail === d.tail)?.id ?? 'custom';
+          return (
+            <div className="inspector">
+              <label>
+                Label
+                <input
+                  value={typeof oneEdge.label === 'string' ? oneEdge.label : ''}
+                  onChange={(e) => patchEdge(oneEdge.id, { label: e.target.value })}
+                />
+              </label>
+              <label>
+                Line
+                <select value={d.line} onChange={(e) => patchEdge(oneEdge.id, { data: { line: e.target.value as Line } })}>
+                  {LINES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Ends
+                <select
+                  value={preset}
+                  onChange={(e) => {
+                    const p = END_PRESETS.find((x) => x.id === e.target.value);
+                    if (p) patchEdge(oneEdge.id, { data: { head: p.head, tail: p.tail } });
+                  }}
+                >
+                  {preset === 'custom' && (
+                    <option value="custom" disabled>
+                      Custom
+                    </option>
+                  )}
+                  {END_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <ColorField
+                label="Color"
+                shown={d.css?.stroke}
+                own={d.css?.stroke}
+                fallback="#8b93a0"
+                onChange={(v) => {
+                  const css: Css = { ...d.css };
+                  if (v === undefined) delete css.stroke;
+                  else css.stroke = v;
+                  patchEdge(oneEdge.id, { data: { css: Object.keys(css).length ? css : undefined } });
+                }}
               />
-            </label>
-            <label>
-              Style
-              <select
-                value={oneEdge.data?.style ?? 'arrow'}
-                onChange={(e) => patchEdge(oneEdge.id, undefined, e.target.value as EdgeStyle)}
-              >
-                {EDGE_STYLES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
+            </div>
+          );
+        })()}
         {oneNode?.type === 'group' && (
           <button
             className="wide"
@@ -570,7 +679,7 @@ function Editor() {
         {!oneNode && !oneEdge && selNode.length === 0 && (
           <p className="hint">
             Select a node or edge to edit it. Double-click a node or a line to edit its label. Drag from a node's edge dot to
-            another node to connect. Press Delete to remove. Drop nodes into a Group box to make a Mermaid subgraph (deleting a group deletes its contents; use Ungroup to keep them). Ctrl+Z / Ctrl+Shift+Z to undo / redo.
+            another node to connect. Press Delete to remove. Pick colors and arrowheads in the inspector. Drop nodes into a Group box to make a Mermaid subgraph (deleting a group deletes its contents; use Ungroup to keep them). Ctrl+Z / Ctrl+Shift+Z to undo / redo.
           </p>
         )}
       </aside>
@@ -584,6 +693,7 @@ function Editor() {
           e.dataTransfer.dropEffect = 'move';
         }}
       >
+        <StyleContext.Provider value={meta.classDefs ?? EMPTY_DEFS}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -605,6 +715,18 @@ function Editor() {
           <Controls />
           <MiniMap pannable zoomable />
         </ReactFlow>
+        </StyleContext.Provider>
+        {/* End markers for circle / cross arrowheads (React Flow references them by id). */}
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+          <defs>
+            <marker id={MARKER.circle} viewBox="0 0 12 12" refX="6" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+              <circle cx="6" cy="6" r="4" fill="#8b93a0" />
+            </marker>
+            <marker id={MARKER.cross} viewBox="0 0 12 12" refX="6" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+              <path d="M2,2 L10,10 M10,2 L2,10" stroke="#8b93a0" strokeWidth="2" strokeLinecap="round" />
+            </marker>
+          </defs>
+        </svg>
         {edgeEdit && (
           <input
             className="edge-edit"

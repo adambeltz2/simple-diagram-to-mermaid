@@ -9,7 +9,7 @@ const g = (direction: Graph['direction'], b: { x: number; y: number }): Graph =>
     { id: 'A', label: 'A', shape: 'rect', x: 100, y: 100 },
     { id: 'B', label: 'B', shape: 'rect', ...b },
   ],
-  edges: [{ id: 'e', source: 'A', target: 'B', label: '', style: 'arrow' }],
+  edges: [{ id: 'e', source: 'A', target: 'B', label: '', line: 'solid', head: 'arrow', tail: 'none' }],
 });
 
 describe('graphToFlow handles', () => {

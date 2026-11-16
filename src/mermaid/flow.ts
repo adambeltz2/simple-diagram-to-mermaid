@@ -1,13 +1,20 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
-import type { Direction, EdgeStyle, GEdge, GGroup, GNode, Graph, Shape } from './types';
+import type { Css, Direction, End, GEdge, GGroup, GNode, Graph, GraphMeta, Line, Shape } from './types';
 
 /**
  * One data shape for both node kinds: `type: 'shape'` is a normal node,
  * `type: 'group'` is a subgraph box (its `shape` is unused).
  */
-export type NodeData = { label: string; shape: Shape };
+export type NodeData = {
+  label: string;
+  shape: Shape;
+  css?: Css;
+  classes?: string[];
+  /** groups only: `direction` line inside the subgraph */
+  direction?: Direction;
+};
 export type FlowNode = Node<NodeData, 'shape' | 'group'>;
-export type EdgeData = { style: EdgeStyle };
+export type EdgeData = { line: Line; head: End; tail: End; css?: Css };
 export type FlowEdge = Edge<EdgeData>;
 
 const HANDLES: Record<Direction, [string, string]> = {
@@ -17,13 +24,25 @@ const HANDLES: Record<Direction, [string, string]> = {
   RL: ['l', 'r'],
 };
 
-export function styleEdge(style: EdgeStyle): Pick<FlowEdge, 'style' | 'markerEnd'> {
+/** ids of the custom SVG markers (defined once in App) used for circle/cross ends. */
+export const MARKER = { circle: 'mm-circle', cross: 'mm-cross' } as const;
+
+function marker(end: End, color?: string): FlowEdge['markerEnd'] {
+  if (end === 'none') return undefined;
+  if (end === 'arrow') return { type: MarkerType.ArrowClosed, ...(color ? { color } : {}) };
+  return MARKER[end];
+}
+
+export function styleEdge(d: EdgeData): Pick<FlowEdge, 'style' | 'markerEnd' | 'markerStart'> {
+  const css = d.css ?? {};
   return {
     style: {
-      strokeWidth: style === 'thick' ? 4 : 2,
-      strokeDasharray: style === 'dotted' ? '6 5' : undefined,
+      strokeWidth: css['stroke-width'] ?? (d.line === 'thick' ? 4 : 2),
+      strokeDasharray: css['stroke-dasharray'] ?? (d.line === 'dotted' ? '6 5' : undefined),
+      ...(css.stroke ? { stroke: css.stroke } : {}),
     },
-    markerEnd: style === 'open' ? undefined : { type: MarkerType.ArrowClosed },
+    markerEnd: marker(d.head, css.stroke),
+    markerStart: marker(d.tail, css.stroke),
   };
 }
 
@@ -111,14 +130,25 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
     width: g.w,
     height: g.h,
     parentId: g.parent && groupById.has(g.parent) ? g.parent : undefined,
-    data: { label: g.label, shape: 'rect' as Shape },
+    data: {
+      label: g.label,
+      shape: 'rect' as Shape,
+      ...(g.css ? { css: g.css } : {}),
+      ...(g.classes ? { classes: g.classes } : {}),
+      ...(g.direction ? { direction: g.direction } : {}),
+    },
   }));
   const shapeNodes: FlowNode[] = graph.nodes.map((n) => ({
     id: n.id,
     type: 'shape' as const,
     position: rel(n.x, n.y, n.parent),
     parentId: n.parent && groupById.has(n.parent) ? n.parent : undefined,
-    data: { label: n.label, shape: n.shape },
+    data: {
+      label: n.label,
+      shape: n.shape,
+      ...(n.css ? { css: n.css } : {}),
+      ...(n.classes ? { classes: n.classes } : {}),
+    },
   }));
 
   return {
@@ -138,14 +168,19 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
             : { sourceHandle: sh, targetHandle: th }
           : {}),
         label: e.label || undefined,
-        data: { style: e.style },
-        ...styleEdge(e.style),
+        data: { line: e.line, head: e.head, tail: e.tail, ...(e.css ? { css: e.css } : {}) },
+        ...styleEdge({ line: e.line, head: e.head, tail: e.tail, css: e.css }),
       };
     }),
   };
 }
 
-export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: FlowEdge[]): Graph {
+export function flowToGraph(
+  direction: Direction,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  meta: GraphMeta = {},
+): Graph {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const isGroup = (id?: string) => !!id && byId.get(id)?.type === 'group';
 
@@ -162,6 +197,9 @@ export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: Flow
         y: Math.round(y),
         w: Math.round(w),
         h: Math.round(h),
+        ...(n.data.css ? { css: n.data.css } : {}),
+        ...(n.data.classes ? { classes: n.data.classes } : {}),
+        ...(n.data.direction ? { direction: n.data.direction } : {}),
       };
     });
 
@@ -176,6 +214,8 @@ export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: Flow
         parent: isGroup(n.parentId) ? n.parentId : undefined,
         x,
         y,
+        ...(n.data.css ? { css: n.data.css } : {}),
+        ...(n.data.classes ? { classes: n.data.classes } : {}),
       };
     });
 
@@ -187,7 +227,10 @@ export function flowToGraph(direction: Direction, nodes: FlowNode[], edges: Flow
       source: e.source,
       target: e.target,
       label: typeof e.label === 'string' ? e.label : '',
-      style: e.data?.style ?? 'arrow',
+      line: e.data?.line ?? 'solid',
+      head: e.data?.head ?? 'arrow',
+      tail: e.data?.tail ?? 'none',
+      ...(e.data?.css ? { css: e.data.css } : {}),
     }));
-  return { direction, nodes: gn, edges: ge, groups };
+  return { ...meta, direction, nodes: gn, edges: ge, groups };
 }

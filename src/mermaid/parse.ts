@@ -1,4 +1,4 @@
-import type { Direction, EdgeStyle, GEdge, GGroup, GNode, Graph, Shape } from './types';
+import type { Css, Direction, End, GEdge, GGroup, GNode, Graph, Line, Shape } from './types';
 
 export interface ParseResult {
   graph: Graph;
@@ -24,6 +24,31 @@ export function unquoteLabel(raw: string): string {
     .replace(/#quot;/g, '"');
 }
 
+/** `fill:#f9f,stroke:#333,stroke-width:4px` -> object. Commas inside (...) are kept. */
+export function parseCss(s: string): Css {
+  const parts: string[] = [];
+  let cur = '';
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  const out: Css = {};
+  for (const p of parts) {
+    const i = p.indexOf(':');
+    if (i < 0) continue;
+    const k = p.slice(0, i).trim();
+    const v = p.slice(i + 1).trim().replace(/;$/, '');
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
 /** Split on `;` outside of double quotes. */
 function splitStatements(line: string): string[] {
   const out: string[] = [];
@@ -44,10 +69,11 @@ interface NodeRef {
   id: string;
   label?: string;
   shape?: Shape;
+  classes?: string[];
 }
 
 /** Parse `id` or `id[label]` etc. at the start of `s`. */
-function parseNode(s: string): { ref: NodeRef; rest: string } | null {
+function parseNodeBase(s: string): { ref: NodeRef; rest: string } | null {
   const m = /^[A-Za-z0-9_]+/.exec(s);
   if (!m) return null;
   const id = m[0];
@@ -72,6 +98,18 @@ function parseNode(s: string): { ref: NodeRef; rest: string } | null {
   return { ref: { id }, rest: after };
 }
 
+/** Node with an optional `:::className` suffix. */
+function parseNode(s: string): { ref: NodeRef; rest: string } | null {
+  const r = parseNodeBase(s);
+  if (!r) return null;
+  const c = /^:::([A-Za-z0-9_-]+)/.exec(r.rest);
+  if (c) {
+    r.ref.classes = [c[1]];
+    r.rest = r.rest.slice(c[0].length);
+  }
+  return r;
+}
+
 /** Parse `A & B & C`. */
 function parseNodeGroup(s: string): { refs: NodeRef[]; rest: string } | null {
   const refs: NodeRef[] = [];
@@ -87,17 +125,25 @@ function parseNodeGroup(s: string): { refs: NodeRef[]; rest: string } | null {
   return { refs, rest };
 }
 
-function styleOf(op: string): EdgeStyle {
-  if (op.includes('.')) return 'dotted';
-  if (op.startsWith('=')) return 'thick';
-  return op.endsWith('>') ? 'arrow' : 'open';
+const END_OF: Record<string, End> = { '>': 'arrow', '<': 'arrow', o: 'circle', x: 'cross' };
+const endOf = (ch?: string): End => (ch && END_OF[ch]) || 'none';
+
+interface Op {
+  line: Line;
+  head: End;
+  tail: End;
+  label: string;
+  rest: string;
 }
 
 /** Parse an edge operator (with optional label) at the start of `s`. */
-function parseEdgeOp(s: string): { style: EdgeStyle; label: string; rest: string } | null {
-  // Plain operator, optionally followed by |label|
-  let m = /^(-{2,}>|-{3,}|-\.+->|-\.+-|={2,}>|={3,})/.exec(s);
+function parseEdgeOp(s: string): Op | null {
+  // Plain operator: -->  ---  --o  --x  <-->  o--o  -.->  ==>  ===  ...
+  let m = /^([<ox])?(?:(-{2,})([>ox])|(-{3,})|(-\.+-)([>ox])?|(={2,})([>ox])|(={3,}))/.exec(s);
   if (m) {
+    const line: Line = m[2] || m[4] ? 'solid' : m[5] ? 'dotted' : 'thick';
+    const head = endOf(m[3] ?? m[6] ?? m[8]);
+    const tail = endOf(m[1]);
     let rest = s.slice(m[0].length);
     let label = '';
     const pipe = /^\s*\|/.exec(rest);
@@ -113,29 +159,64 @@ function parseEdgeOp(s: string): { style: EdgeStyle; label: string; rest: string
         rest = body.slice(end + 1);
       }
     }
-    return { style: styleOf(m[0]), label, rest };
+    return { line, head, tail, label, rest };
   }
   // Text-in-the-middle forms: `-- text -->`, `-. text .->`, `== text ==>`
-  m =
-    /^--\s+(.+?)\s+(-{2,}>|-{3,})/.exec(s) ||
-    /^-\.\s+(.+?)\s+(\.+->|\.+-)/.exec(s) ||
-    /^==\s+(.+?)\s+(={2,}>|={3,})/.exec(s);
-  if (m) {
-    return { style: styleOf(m[2].replace(/^\./, '-.')), label: unquoteLabel(m[1]), rest: s.slice(m[0].length) };
+  const forms: [RegExp, Line][] = [
+    [/^([<ox])?--\s+(.+?)\s+(-{2,}[>ox]|-{3,})/, 'solid'],
+    [/^([<ox])?-\.\s+(.+?)\s+(\.+-[>ox]?)/, 'dotted'],
+    [/^([<ox])?==\s+(.+?)\s+(={2,}[>ox]|={3,})/, 'thick'],
+  ];
+  for (const [re, line] of forms) {
+    m = re.exec(s);
+    if (m) {
+      return {
+        line,
+        head: endOf(m[3].slice(-1)),
+        tail: endOf(m[1]),
+        label: unquoteLabel(m[2]),
+        rest: s.slice(m[0].length),
+      };
+    }
   }
   return null;
 }
 
-export function parseMermaid(text: string): ParseResult {
+const DIRS = /^(TD|TB|LR|RL|BT)$/i;
+const normDir = (d: string): Direction => (d.toUpperCase() === 'TB' ? 'TD' : d.toUpperCase()) as Direction;
+
+export function parseMermaid(input: string): ParseResult {
   const warnings: string[] = [];
   const nodes = new Map<string, GNode>();
   const groups = new Map<string, GGroup>();
   const stack: string[] = [];
   const edges: GEdge[] = [];
+  const extras: string[] = [];
+  const preamble: string[] = [];
+  const classDefs: Record<string, Css> = {};
+  const classStmts: [string[], string[]][] = [];
+  const styleStmts: [string[], Css][] = [];
+  const linkStmts: [string, Css][] = [];
+  let keyword: string | undefined;
   let direction: Direction = 'TD';
   let sawHeader = false;
 
+  // YAML frontmatter: kept verbatim.
+  let frontmatter: string | undefined;
+  let text = input;
+  let lineOffset = 0;
+  const fm = /^\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (fm) {
+    frontmatter = fm[1];
+    lineOffset = fm[0].split('\n').length - 1;
+    text = text.slice(fm[0].length);
+  }
+
   const current = () => stack[stack.length - 1];
+  const keep = (lineNo: number, stmt: string, why: string) => {
+    extras.push(stmt);
+    warnings.push(`Line ${lineNo}: ${why} — kept as-is (not shown on the canvas): "${stmt}"`);
+  };
 
   const touch = (r: NodeRef) => {
     const existing = nodes.get(r.id);
@@ -147,6 +228,7 @@ export function parseMermaid(text: string): ParseResult {
         parent: current(),
         x: 0,
         y: 0,
+        ...(r.classes ? { classes: [...r.classes] } : {}),
       });
     } else {
       if (r.shape) {
@@ -154,6 +236,7 @@ export function parseMermaid(text: string): ParseResult {
         existing.shape = r.shape;
       }
       if (!existing.parent && current()) existing.parent = current();
+      if (r.classes) existing.classes = [...new Set([...(existing.classes ?? []), ...r.classes])];
     }
   };
 
@@ -170,7 +253,7 @@ export function parseMermaid(text: string): ParseResult {
     } else {
       label = unquoteLabel(rest);
     }
-    let base = id ?? (label.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'group');
+    const base = id ?? (label.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'group');
     let unique = base;
     for (let n = 2; groups.has(unique) || nodes.has(unique); n++) unique = `${base}_${n}`;
     groups.set(unique, { id: unique, label, parent: current(), x: 0, y: 0, w: 200, h: 120 });
@@ -178,17 +261,33 @@ export function parseMermaid(text: string): ParseResult {
   };
 
   const lines = text.split(/\r?\n/);
+  let directive: string[] | null = null; // multi-line %%{ ... }%%
   lines.forEach((rawLine, i) => {
-    const lineNo = i + 1;
-    const line = rawLine.replace(/^\s*%%.*$/, '').trim();
+    const lineNo = i + 1 + lineOffset;
+    let line = rawLine.trim();
+
+    if (directive) {
+      directive.push(line);
+      if (line.includes('}%%')) {
+        preamble.push(directive.join('\n'));
+        directive = null;
+      }
+      return;
+    }
+    if (line.startsWith('%%{')) {
+      if (line.includes('}%%')) preamble.push(line);
+      else directive = [line];
+      return;
+    }
+    line = line.replace(/^%%.*$/, '').trim(); // plain comment lines are dropped
     if (!line) return;
 
     for (const stmt of splitStatements(line)) {
-      const header = /^(?:flowchart|graph)(?:\s+(TD|TB|LR|RL|BT))?\s*$/i.exec(stmt);
+      const header = /^(flowchart(?:-elk)?|graph)(?:\s+(TD|TB|LR|RL|BT))?\s*$/i.exec(stmt);
       if (header) {
         sawHeader = true;
-        const d = (header[1] ?? 'TD').toUpperCase();
-        direction = (d === 'TB' ? 'TD' : d) as Direction;
+        if (/-elk$/i.test(header[1])) keyword = 'flowchart-elk';
+        direction = normDir(header[2] ?? 'TD');
         continue;
       }
       if (/^end$/i.test(stmt)) {
@@ -200,8 +299,30 @@ export function parseMermaid(text: string): ParseResult {
         openGroup(sub[1].trim());
         continue;
       }
-      if (/^(direction|classDef|class|style|linkStyle|click)\b/i.test(stmt)) {
-        warnings.push(`Line ${lineNo}: "${stmt.split(/\s/)[0]}" is not supported and was ignored.`);
+      const dir = /^direction\s+(\S+)$/i.exec(stmt);
+      if (dir && DIRS.test(dir[1]) && current()) {
+        groups.get(current())!.direction = normDir(dir[1]);
+        continue;
+      }
+      let m: RegExpExecArray | null;
+      if ((m = /^classDef\s+(\S+)\s+(.+)$/i.exec(stmt))) {
+        for (const name of m[1].split(',')) classDefs[name] = { ...classDefs[name], ...parseCss(m[2]) };
+        continue;
+      }
+      if ((m = /^class\s+(\S+)\s+(\S+)$/i.exec(stmt))) {
+        classStmts.push([m[1].split(','), m[2].split(',')]);
+        continue;
+      }
+      if ((m = /^style\s+(\S+)\s+(.+)$/i.exec(stmt))) {
+        styleStmts.push([m[1].split(','), parseCss(m[2])]);
+        continue;
+      }
+      if ((m = /^linkStyle\s+(default|[\d,\s]+?)\s+(.+)$/i.exec(stmt))) {
+        linkStmts.push([m[1].trim(), parseCss(m[2])]);
+        continue;
+      }
+      if (/^(click|accTitle|accDescr|direction|linkStyle|class|style|classDef)\b/i.test(stmt)) {
+        keep(lineNo, stmt, `"${stmt.split(/\s/)[0]}" isn't editable here`);
         continue;
       }
       if (!sawHeader && /^[A-Za-z]+Diagram/i.test(stmt)) {
@@ -211,11 +332,11 @@ export function parseMermaid(text: string): ParseResult {
 
       let group = parseNodeGroup(stmt);
       if (!group) {
-        warnings.push(`Line ${lineNo}: could not parse "${stmt}".`);
+        keep(lineNo, stmt, 'could not parse');
         continue;
       }
       if (group.refs.some((r) => groups.has(r.id))) {
-        warnings.push(`Line ${lineNo}: edges to/from a subgraph are not supported; line ignored.`);
+        keep(lineNo, stmt, 'edges to/from a subgraph are not supported');
         continue;
       }
       group.refs.forEach(touch);
@@ -223,16 +344,16 @@ export function parseMermaid(text: string): ParseResult {
       while (rest) {
         const op = parseEdgeOp(rest);
         if (!op) {
-          warnings.push(`Line ${lineNo}: could not parse "${rest}".`);
+          keep(lineNo, rest, 'could not parse the rest of this line');
           break;
         }
         const next = parseNodeGroup(op.rest);
         if (!next) {
-          warnings.push(`Line ${lineNo}: edge has no target.`);
+          keep(lineNo, rest, 'edge has no target');
           break;
         }
         if (next.refs.some((r) => groups.has(r.id))) {
-          warnings.push(`Line ${lineNo}: edges to/from a subgraph are not supported; edge ignored.`);
+          keep(lineNo, rest, 'edges to/from a subgraph are not supported');
           break;
         }
         next.refs.forEach(touch);
@@ -243,7 +364,9 @@ export function parseMermaid(text: string): ParseResult {
               source: s.id,
               target: t.id,
               label: op.label,
-              style: op.style,
+              line: op.line,
+              head: op.head,
+              tail: op.tail,
             });
         group = next;
         rest = next.rest.trim();
@@ -251,11 +374,42 @@ export function parseMermaid(text: string): ParseResult {
     }
   });
 
+  // Resolve statements that may refer to things defined later.
+  const target = (id: string) => nodes.get(id) ?? groups.get(id);
+  for (const [ids, names] of classStmts)
+    for (const id of ids) {
+      const t = target(id);
+      if (t) t.classes = [...new Set([...(t.classes ?? []), ...names])];
+    }
+  for (const [ids, css] of styleStmts)
+    for (const id of ids) {
+      const t = target(id);
+      if (t) t.css = { ...t.css, ...css };
+    }
+  for (const [which, css] of linkStmts) {
+    if (which === 'default') edges.forEach((e) => (e.css = { ...css, ...e.css }));
+    else
+      for (const n of which.split(',')) {
+        const e = edges[Number(n.trim())];
+        if (e) e.css = { ...e.css, ...css };
+      }
+  }
+
   if (!sawHeader && nodes.size > 0) warnings.push('No "flowchart TD" header found; assumed TD.');
   if (stack.length) warnings.push('A "subgraph" is missing its "end".');
 
   return {
-    graph: { direction, nodes: [...nodes.values()], edges, groups: [...groups.values()] },
+    graph: {
+      direction,
+      nodes: [...nodes.values()],
+      edges,
+      groups: [...groups.values()],
+      ...(keyword ? { keyword } : {}),
+      ...(frontmatter !== undefined ? { frontmatter } : {}),
+      ...(preamble.length ? { preamble } : {}),
+      ...(extras.length ? { extras } : {}),
+      ...(Object.keys(classDefs).length ? { classDefs } : {}),
+    },
     warnings,
   };
 }

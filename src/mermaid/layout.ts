@@ -71,3 +71,17 @@ export function autoLayout(graph: Graph): Graph {
   };
   return fitGroups(laid);
 }
+
+/**
+ * When applying edited Mermaid text, decide whether the nodes the user already
+ * placed should keep their positions. True for small edits to the same diagram;
+ * false when the text is really a different diagram that happens to reuse ids
+ * (A, B, C ...), where mixing old and new positions would produce a jumble.
+ */
+export function shouldKeepPositions(parsed: GNode[], known: Map<string, GNode>): boolean {
+  if (!parsed.length) return false;
+  const matched = parsed.filter((n) => known.has(n.id));
+  if (!matched.length) return false;
+  const sameLabel = matched.filter((n) => known.get(n.id)!.label === n.label).length;
+  return matched.length / parsed.length >= 0.7 && sameLabel >= matched.length / 2;
+}

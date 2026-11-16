@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import type { FlowNode } from '../mermaid/flow';
-import type { Shape } from '../mermaid/types';
+import { effectiveCss, type Shape } from '../mermaid/types';
+import { StyleContext, nodeStyleVars } from './StyleContext';
 
 const SVG_SHAPES: Partial<Record<Shape, React.ReactNode>> = {
   diamond: <polygon points="50,1 99,50 50,99 1,50" />,
@@ -16,6 +17,7 @@ const SVG_SHAPES: Partial<Record<Shape, React.ReactNode>> = {
 
 export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { updateNodeData } = useReactFlow();
+  const classDefs = useContext(StyleContext);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -28,6 +30,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={`shape-node shape-${data.shape}${selected ? ' selected' : ''}`}
+      style={nodeStyleVars(effectiveCss(data.classes, classDefs, data.css))}
       onDoubleClick={() => {
         setDraft(data.label);
         setEditing(true);

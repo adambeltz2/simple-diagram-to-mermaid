@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react';
 import type { FlowNode } from '../mermaid/flow';
+import { effectiveCss } from '../mermaid/types';
+import { StyleContext, nodeStyleVars } from './StyleContext';
 
 /** A Mermaid `subgraph`: a resizable box that nodes can be dropped into. */
 export function GroupNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { updateNodeData } = useReactFlow();
+  const classDefs = useContext(StyleContext);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -16,6 +19,7 @@ export function GroupNode({ id, data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={`group-node${selected ? ' selected' : ''}`}
+      style={nodeStyleVars(effectiveCss(data.classes, classDefs, data.css))}
       onDoubleClick={() => {
         setDraft(data.label);
         setEditing(true);

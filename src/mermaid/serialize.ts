@@ -1,4 +1,4 @@
-import type { EdgeStyle, Graph, Shape } from './types';
+import { cssToString, type End, type Graph, type Line, type Shape } from './types';
 
 const WRAP: Record<Shape, [string, string]> = {
   rect: ['[', ']'],
@@ -10,12 +10,16 @@ const WRAP: Record<Shape, [string, string]> = {
   hexagon: ['{{', '}}'],
 };
 
-const OP: Record<EdgeStyle, string> = {
-  arrow: '-->',
-  open: '---',
-  dotted: '-.->',
-  thick: '==>',
-};
+const HEAD: Record<Exclude<End, 'none'>, string> = { arrow: '>', circle: 'o', cross: 'x' };
+const TAIL: Record<Exclude<End, 'none'>, string> = { arrow: '<', circle: 'o', cross: 'x' };
+
+/** e.g. solid/arrow/none -> `-->`, dotted/arrow/arrow -> `<-.->`, thick/none/none -> `===` */
+export function edgeOp(line: Line, head: End, tail: End): string {
+  const h = head === 'none' ? '' : HEAD[head];
+  const body =
+    line === 'solid' ? (h ? `--${h}` : '---') : line === 'dotted' ? `-.-${h}` : h ? `==${h}` : '===';
+  return (tail === 'none' ? '' : TAIL[tail]) + body;
+}
 
 const RESERVED = new Set(['end', 'graph', 'flowchart', 'subgraph', 'style', 'class', 'click']);
 
@@ -51,7 +55,10 @@ export function toMermaid(graph: Graph): string {
   const groupIds = new Set(graph.groups.map((g) => g.id));
   const parentOf = (p?: string) => (p && groupIds.has(p) ? p : undefined);
 
-  const lines = [`flowchart ${graph.direction}`];
+  const lines: string[] = [];
+  if (graph.frontmatter?.trim()) lines.push('---', graph.frontmatter.replace(/\s+$/, ''), '---');
+  lines.push(...(graph.preamble ?? []));
+  lines.push(`${graph.keyword ?? 'flowchart'} ${graph.direction}`);
 
   const emitNodes = (parent: string | undefined, indent: string) => {
     for (const n of graph.nodes) {
@@ -65,6 +72,7 @@ export function toMermaid(graph: Graph): string {
       if (parentOf(g.parent) !== parent || seen.has(g.id)) continue;
       seen.add(g.id);
       lines.push(`${indent}subgraph ${ids.get(g.id)}[${quoteLabel(g.label)}]`);
+      if (g.direction) lines.push(`${indent}    direction ${g.direction}`);
       emitNodes(g.id, indent + '    ');
       emitGroups(g.id, indent + '    ', seen);
       lines.push(`${indent}end`);
@@ -74,12 +82,31 @@ export function toMermaid(graph: Graph): string {
   emitNodes(undefined, '    ');
   emitGroups(undefined, '    ', new Set());
 
+  let edgeIndex = 0;
+  const linkStyles: string[] = [];
   for (const e of graph.edges) {
     const s = ids.get(e.source);
     const t = ids.get(e.target);
     if (!s || !t) continue;
     const label = e.label.trim() ? `|${quoteLabel(e.label.trim())}|` : '';
-    lines.push(`    ${s} ${OP[e.style]}${label} ${t}`);
+    lines.push(`    ${s} ${edgeOp(e.line, e.head, e.tail)}${label} ${t}`);
+    if (e.css && Object.keys(e.css).length) linkStyles.push(`    linkStyle ${edgeIndex} ${cssToString(e.css)}`);
+    edgeIndex++;
   }
+
+  for (const [name, css] of Object.entries(graph.classDefs ?? {})) {
+    if (Object.keys(css).length) lines.push(`    classDef ${name} ${cssToString(css)}`);
+  }
+  const byClass = new Map<string, string[]>();
+  for (const x of [...graph.groups, ...graph.nodes]) {
+    for (const c of x.classes ?? []) byClass.set(c, [...(byClass.get(c) ?? []), ids.get(x.id)!]);
+  }
+  for (const [c, members] of byClass) lines.push(`    class ${members.join(',')} ${c}`);
+  for (const x of [...graph.groups, ...graph.nodes]) {
+    if (x.css && Object.keys(x.css).length) lines.push(`    style ${ids.get(x.id)} ${cssToString(x.css)}`);
+  }
+  lines.push(...linkStyles);
+  for (const x of graph.extras ?? []) lines.push(`    ${x}`);
+
   return lines.join('\n') + '\n';
 }
