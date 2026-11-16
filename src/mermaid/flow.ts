@@ -1,5 +1,5 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
-import type { Css, Direction, End, GEdge, GGroup, GNode, Graph, GraphMeta, Line, Shape } from './types';
+import type { Attr, Card, Css, Direction, End, GEdge, GGroup, GNode, Graph, GraphMeta, Line, Shape } from './types';
 
 /**
  * One data shape for both node kinds: `type: 'shape'` is a normal node,
@@ -10,11 +10,13 @@ export type NodeData = {
   shape: Shape;
   css?: Css;
   classes?: string[];
+  /** ER entities */
+  attrs?: Attr[];
   /** groups only: `direction` line inside the subgraph */
   direction?: Direction;
 };
 export type FlowNode = Node<NodeData, 'shape' | 'group'>;
-export type EdgeData = { line: Line; head: End; tail: End; css?: Css };
+export type EdgeData = { line: Line; head: End; tail: End; css?: Css; er?: { from: Card; to: Card } };
 export type FlowEdge = Edge<EdgeData>;
 
 const HANDLES: Record<Direction, [string, string]> = {
@@ -26,6 +28,13 @@ const HANDLES: Record<Direction, [string, string]> = {
 
 /** ids of the custom SVG markers (defined once in App) used for circle/cross ends. */
 export const MARKER = { circle: 'mm-circle', cross: 'mm-cross' } as const;
+/** crow's-foot markers for ER relationship ends */
+export const ER_MARKER: Record<Card, string> = {
+  one: 'er-one',
+  'zero-one': 'er-zero-one',
+  'zero-many': 'er-zero-many',
+  'one-many': 'er-one-many',
+};
 
 function marker(end: End, color?: string): FlowEdge['markerEnd'] {
   if (end === 'none') return undefined;
@@ -35,6 +44,17 @@ function marker(end: End, color?: string): FlowEdge['markerEnd'] {
 
 export function styleEdge(d: EdgeData): Pick<FlowEdge, 'style' | 'markerEnd' | 'markerStart'> {
   const css = d.css ?? {};
+  if (d.er) {
+    return {
+      style: {
+        strokeWidth: css['stroke-width'] ?? 2,
+        strokeDasharray: d.line === 'dotted' ? '6 5' : undefined,
+        ...(css.stroke ? { stroke: css.stroke } : {}),
+      },
+      markerStart: ER_MARKER[d.er.from],
+      markerEnd: ER_MARKER[d.er.to],
+    };
+  }
   return {
     style: {
       strokeWidth: css['stroke-width'] ?? (d.line === 'thick' ? 4 : 2),
@@ -148,6 +168,7 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
       shape: n.shape,
       ...(n.css ? { css: n.css } : {}),
       ...(n.classes ? { classes: n.classes } : {}),
+      ...(n.attrs ? { attrs: n.attrs } : {}),
     },
   }));
 
@@ -168,8 +189,8 @@ export function graphToFlow(graph: Graph, resetHandles = true): { nodes: FlowNod
             : { sourceHandle: sh, targetHandle: th }
           : {}),
         label: e.label || undefined,
-        data: { line: e.line, head: e.head, tail: e.tail, ...(e.css ? { css: e.css } : {}) },
-        ...styleEdge({ line: e.line, head: e.head, tail: e.tail, css: e.css }),
+        data: { line: e.line, head: e.head, tail: e.tail, ...(e.css ? { css: e.css } : {}), ...(e.er ? { er: e.er } : {}) },
+        ...styleEdge({ line: e.line, head: e.head, tail: e.tail, css: e.css, er: e.er }),
       };
     }),
   };
@@ -216,6 +237,7 @@ export function flowToGraph(
         y,
         ...(n.data.css ? { css: n.data.css } : {}),
         ...(n.data.classes ? { classes: n.data.classes } : {}),
+        ...(n.data.attrs ? { attrs: n.data.attrs } : {}),
       };
     });
 
@@ -231,6 +253,7 @@ export function flowToGraph(
       head: e.data?.head ?? 'arrow',
       tail: e.data?.tail ?? 'none',
       ...(e.data?.css ? { css: e.data.css } : {}),
+      ...(e.data?.er ? { er: e.data.er } : {}),
     }));
   return { ...meta, direction, nodes: gn, edges: ge, groups };
 }

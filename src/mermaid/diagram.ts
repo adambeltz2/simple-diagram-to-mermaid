@@ -1,43 +1,47 @@
 import { directiveCollector, extractFrontmatter, parseMermaid, type ParseResult } from './parse';
 import { toMermaid } from './serialize';
+import { parseEr, toEr } from './er';
 import { parseState, toState } from './state';
-import type { Graph } from './types';
+import type { DiagramKind, Graph } from './types';
 
 /** Look at the first real line (after frontmatter, directives and comments). */
-export function detectDiagram(text: string): 'flowchart' | 'state' {
+export function detectDiagram(text: string): DiagramKind {
   const { text: body } = extractFrontmatter(text);
   const d = directiveCollector();
   for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim();
     if (d.feed(line) || !line || line.startsWith('%%')) continue;
-    return /^stateDiagram/i.test(line) ? 'state' : 'flowchart';
+    return /^stateDiagram/i.test(line) ? 'state' : /^erDiagram/i.test(line) ? 'er' : 'flowchart';
   }
   return 'flowchart';
 }
 
 export function parseDiagram(text: string): ParseResult {
-  return detectDiagram(text) === 'state' ? parseState(text) : parseMermaid(text);
+  const kind = detectDiagram(text);
+  return kind === 'state' ? parseState(text) : kind === 'er' ? parseEr(text) : parseMermaid(text);
 }
 
 export function toDiagram(graph: Graph): string {
-  return graph.diagram === 'state' ? toState(graph) : toMermaid(graph);
+  return graph.diagram === 'state' ? toState(graph) : graph.diagram === 'er' ? toEr(graph) : toMermaid(graph);
 }
 
 /** Convert the open diagram to another type, mapping node kinds sensibly. */
-export function convertDiagram(graph: Graph, to: 'flowchart' | 'state'): Graph {
+export function convertDiagram(graph: Graph, to: DiagramKind): Graph {
   const from = graph.diagram ?? 'flowchart';
   if (from === to) return graph;
-  const { diagram: _drop, ...rest } = graph;
-  if (to === 'state') {
+  // Go through flowchart as the common middle form.
+  const fc = from === 'flowchart' ? graph : toFlowchart(graph);
+  if (to === 'flowchart') return fc;
+  return to === 'state' ? flowchartToState(fc) : flowchartToEr(fc);
+}
+
+function toFlowchart(graph: Graph): Graph {
+  const { diagram: _d, ...rest } = graph;
+  if (graph.diagram === 'er') {
     return {
       ...rest,
-      diagram: 'state',
-      nodes: graph.nodes.map(({ css: _c, ...n }) => ({
-        ...n,
-        shape: n.shape === 'diamond' ? 'choice' : 'round',
-      })),
-      groups: graph.groups.map(({ css: _c, ...g }) => g),
-      edges: graph.edges.map(({ css: _c, ...e }) => ({ ...e, line: 'solid', head: 'arrow', tail: 'none' })),
+      nodes: graph.nodes.map(({ attrs: _a, ...n }) => ({ ...n, shape: 'rect' })),
+      edges: graph.edges.map(({ er: _er, ...e }) => ({ ...e, line: 'solid', head: 'arrow', tail: 'none' })),
     };
   }
   return {
@@ -51,5 +55,31 @@ export function convertDiagram(graph: Graph, to: 'flowchart' | 'state'): Graph {
         default: return n;
       }
     }),
+  };
+}
+
+function flowchartToState(graph: Graph): Graph {
+  return {
+    ...graph,
+    diagram: 'state',
+    nodes: graph.nodes.map(({ css: _c, ...n }) => ({ ...n, shape: n.shape === 'diamond' ? 'choice' : 'round' })),
+    groups: graph.groups.map(({ css: _c, ...g }) => g),
+    edges: graph.edges.map(({ css: _c, ...e }) => ({ ...e, line: 'solid', head: 'arrow', tail: 'none' })),
+  };
+}
+
+function flowchartToEr(graph: Graph): Graph {
+  return {
+    ...graph,
+    diagram: 'er',
+    groups: [],
+    nodes: graph.nodes.map(({ css: _c, parent: _p, ...n }) => ({ ...n, shape: 'entity', attrs: n.attrs ?? [] })),
+    edges: graph.edges.map(({ css: _c, ...e }) => ({
+      ...e,
+      line: e.line === 'dotted' ? 'dotted' : 'solid',
+      head: 'none',
+      tail: 'none',
+      er: e.er ?? { from: 'one', to: 'zero-many' },
+    })),
   };
 }

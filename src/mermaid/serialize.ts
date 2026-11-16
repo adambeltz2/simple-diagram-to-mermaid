@@ -20,6 +20,7 @@ const WRAP: Record<Shape, [string, string]> = {
   end: ['(((', ')))'],
   choice: ['{', '}'],
   fork: ['[', ']'],
+  entity: ['[', ']'],
 };
 
 const HEAD: Record<Exclude<End, 'none'>, string> = { arrow: '>', circle: 'o', cross: 'x' };

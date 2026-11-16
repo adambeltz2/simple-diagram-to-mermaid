@@ -12,6 +12,7 @@ import {
   useReactFlow,
   type Connection,
 } from '@xyflow/react';
+import { AttrEditor } from './canvas/AttrEditor';
 import { ColorField } from './canvas/ColorField';
 import { GroupNode } from './canvas/GroupNode';
 import { StyleContext } from './canvas/StyleContext';
@@ -19,6 +20,7 @@ import { reparent, ungroup, wrapInGroup } from './canvas/grouping';
 import { ShapeNode } from './canvas/ShapeNode';
 import { Preview } from './Preview';
 import {
+  ER_MARKER,
   MARKER,
   flowToGraph,
   graphToFlow,
@@ -39,6 +41,10 @@ import {
   LINES,
   SHAPES,
   STATE_SHAPES,
+  ER_SHAPES,
+  CARDS,
+  type Card,
+  type DiagramKind,
   LABELLESS,
   effectiveCss,
   type Css,
@@ -222,7 +228,8 @@ function Editor() {
   const graph = useMemo(() => flowToGraph(direction, nodes, edges, meta), [direction, nodes, edges, meta]);
   const generated = useMemo(() => toDiagram(graph), [graph]);
   const isState = meta.diagram === 'state';
-  const paletteShapes = isState ? STATE_SHAPES : SHAPES;
+  const isEr = meta.diagram === 'er';
+  const paletteShapes = isState ? STATE_SHAPES : isEr ? ER_SHAPES : SHAPES;
 
   useEffect(() => {
     try {
@@ -277,7 +284,11 @@ function Editor() {
           });
         return [
           ...ns.map((n) => ({ ...n, selected: false })),
-          { id, type: 'shape' as const, position: pos, selected: true, data: { label: LABELLESS.has(shape) ? '' : isState ? `State ${id}` : `Node ${id}`, shape } },
+          { id, type: 'shape' as const, position: pos, selected: true, data:
+              shape === 'entity'
+                ? { label: id, shape, attrs: [{ type: 'string', name: 'id', keys: 'PK' }] }
+                : { label: LABELLESS.has(shape) ? '' : isState ? `State ${id}` : `Node ${id}`, shape },
+          },
         ];
       });
     },
@@ -327,13 +338,19 @@ function Editor() {
           {
             ...c,
             id: newId('e'),
-            data: { line: 'solid', head: 'arrow', tail: 'none' } as EdgeData,
-            ...styleEdge({ line: 'solid', head: 'arrow', tail: 'none' }),
+            data: (isEr
+              ? { line: 'solid', head: 'none', tail: 'none', er: { from: 'one', to: 'zero-many' } }
+              : { line: 'solid', head: 'arrow', tail: 'none' }) as EdgeData,
+            ...styleEdge(
+              isEr
+                ? { line: 'solid', head: 'none', tail: 'none', er: { from: 'one', to: 'zero-many' } }
+                : { line: 'solid', head: 'arrow', tail: 'none' },
+            ),
           },
           es,
         ),
       ),
-    [setEdges],
+    [setEdges, isEr],
   );
 
   const onDrop = (e: React.DragEvent) => {
@@ -395,9 +412,14 @@ function Editor() {
   };
 
   const renameNode = (oldId: string, raw: string) => {
-    const id = raw.trim().replace(/[^A-Za-z0-9_]/g, '_');
+    let id = raw.trim().replace(isEr ? /[^A-Za-z0-9_-]/g : /[^A-Za-z0-9_]/g, '_');
+    if (isEr && /^[0-9-]/.test(id)) id = `_${id}`;
     if (!id || id === oldId || nodes.some((n) => n.id === id)) return;
-    setNodes((ns) => ns.map((n) => (n.id === oldId ? { ...n, id } : n)));
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === oldId ? { ...n, id, data: isEr && n.data.label === oldId ? { ...n.data, label: id } : n.data } : n,
+      ),
+    );
     setEdges((es) =>
       es.map((e) => ({
         ...e,
@@ -443,10 +465,11 @@ function Editor() {
         <label>
           Diagram{' '}
           <select
-            value={isState ? 'state' : 'flowchart'}
+            value={isState ? 'state' : isEr ? 'er' : 'flowchart'}
             onChange={(e) => {
-              const to = e.target.value as 'flowchart' | 'state';
-              if (nodes.length && !confirm(`Convert this diagram to a ${to === 'state' ? 'state diagram' : 'flowchart'}? Some styling may be lost.`)) return;
+              const to = e.target.value as DiagramKind;
+              const nice = to === 'state' ? 'state diagram' : to === 'er' ? 'ER diagram' : 'flowchart';
+              if (nodes.length && !confirm(`Convert this diagram to a ${nice}? Some details may be lost.`)) return;
               load(autoLayout(convertDiagram(graph, to)), true);
               setDraft(null);
               setWarnings([]);
@@ -454,6 +477,7 @@ function Editor() {
           >
             <option value="flowchart">Flowchart</option>
             <option value="state">State diagram</option>
+            <option value="er">ER diagram</option>
           </select>
         </label>
         <label>
@@ -543,6 +567,7 @@ function Editor() {
               {s.name}
             </button>
           ))}
+          {!isEr && (
           <button
             className="palette-item"
             draggable
@@ -553,10 +578,35 @@ function Editor() {
             <span className="swatch swatch-group" />
             {isState ? 'Composite state' : 'Group'}
           </button>
+          )}
         </div>
 
         <h3>Inspector</h3>
-        {oneNode && (
+        {oneNode && oneNode.data.shape === 'entity' && (
+          <div className="inspector">
+            <label>
+              Name
+              <input
+                key={oneNode.id}
+                defaultValue={oneNode.id}
+                onBlur={(e) => {
+                  renameNode(oneNode.id, e.target.value);
+                  e.target.value = oneNode.id;
+                }}
+              />
+            </label>
+            <label>
+              Alias (optional)
+              <input
+                value={oneNode.data.label === oneNode.id ? '' : oneNode.data.label}
+                placeholder={oneNode.id}
+                onChange={(e) => patchNode(oneNode.id, { label: e.target.value || oneNode.id })}
+              />
+            </label>
+            <AttrEditor attrs={oneNode.data.attrs ?? []} onChange={(attrs) => patchNode(oneNode.id, { attrs })} />
+          </div>
+        )}
+        {oneNode && oneNode.data.shape !== 'entity' && (
           <div className="inspector">
             {!LABELLESS.has(oneNode.data.shape) && (
               <label>
@@ -625,7 +675,47 @@ function Editor() {
             </label>
           </div>
         )}
-        {oneEdge && (() => {
+        {oneEdge && isEr && (() => {
+          const d: EdgeData = { line: 'solid', head: 'none', tail: 'none', ...oneEdge.data };
+          const er = d.er ?? { from: 'one' as Card, to: 'zero-many' as Card };
+          const card = (end: 'from' | 'to') => (
+            <select value={er[end]} onChange={(e) => patchEdge(oneEdge.id, { data: { er: { ...er, [end]: e.target.value as Card } } })}>
+              {CARDS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          );
+          return (
+            <div className="inspector">
+              <label>
+                Relationship
+                <input
+                  value={typeof oneEdge.label === 'string' ? oneEdge.label : ''}
+                  placeholder="e.g. places"
+                  onChange={(e) => patchEdge(oneEdge.id, { label: e.target.value })}
+                />
+              </label>
+              <label>
+                {oneEdge.source} side
+                {card('from')}
+              </label>
+              <label>
+                {oneEdge.target} side
+                {card('to')}
+              </label>
+              <label>
+                Line
+                <select value={d.line} onChange={(e) => patchEdge(oneEdge.id, { data: { line: e.target.value as Line } })}>
+                  <option value="solid">Identifying (solid)</option>
+                  <option value="dotted">Non-identifying (dotted)</option>
+                </select>
+              </label>
+            </div>
+          );
+        })()}
+        {oneEdge && !isEr && (() => {
           const d: EdgeData = { line: 'solid', head: 'arrow', tail: 'none', ...oneEdge.data };
           const preset = END_PRESETS.find((p) => p.head === d.head && p.tail === d.tail)?.id ?? 'custom';
           return (
@@ -694,7 +784,7 @@ function Editor() {
             Ungroup (keep nodes)
           </button>
         )}
-        {selNode.some((n) => n.type !== 'group') && selEdge.length === 0 && (
+        {!isEr && selNode.some((n) => n.type !== 'group') && selEdge.length === 0 && (
           <button className="wide" onClick={groupSelection} title="Wrap the selected nodes in a subgraph">
             Group selection
           </button>
@@ -748,6 +838,30 @@ function Editor() {
             <marker id={MARKER.cross} viewBox="0 0 12 12" refX="6" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
               <path d="M2,2 L10,10 M10,2 L2,10" stroke="#8b93a0" strokeWidth="2" strokeLinecap="round" />
             </marker>
+            {(
+              [
+                ['one', <path key="a" d="M14,2 V14 M19,2 V14" />],
+                ['zero-one', <g key="a"><circle cx="9" cy="8" r="4" style={{ fill: 'var(--bg)' }} /><path d="M19,2 V14" /></g>],
+                ['one-many', <path key="a" d="M12,8 L24,2 M12,8 L24,14 M12,8 H24 M8,2 V14" />],
+                ['zero-many', <g key="a"><circle cx="5" cy="8" r="4" style={{ fill: 'var(--bg)' }} /><path d="M11,8 L24,2 M11,8 L24,14 M11,8 H24" /></g>],
+              ] as [Card, React.ReactNode][]
+            ).map(([card, art]) => (
+              <marker
+                key={card}
+                id={ER_MARKER[card]}
+                viewBox="0 0 24 16"
+                refX="24"
+                refY="8"
+                markerWidth="24"
+                markerHeight="16"
+                markerUnits="userSpaceOnUse"
+                orient="auto-start-reverse"
+              >
+                <g stroke="#8b93a0" strokeWidth="1.6" fill="none" strokeLinecap="round">
+                  {art}
+                </g>
+              </marker>
+            ))}
           </defs>
         </svg>
         {edgeEdit && (

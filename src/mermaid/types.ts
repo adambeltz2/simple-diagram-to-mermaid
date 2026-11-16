@@ -17,10 +17,32 @@ export type Shape =
   | 'start'
   | 'end'
   | 'choice'
-  | 'fork';
+  | 'fork'
+  // ER diagrams
+  | 'entity';
 
 /** CSS-like properties as written in Mermaid `style` / `classDef` / `linkStyle` lines. */
 export type Css = Record<string, string>;
+export type DiagramKind = 'flowchart' | 'state' | 'er';
+
+/** ER relationship cardinality at one end. */
+export type Card = 'one' | 'zero-one' | 'zero-many' | 'one-many';
+export const CARDS: { value: Card; name: string }[] = [
+  { value: 'one', name: 'Exactly one' },
+  { value: 'zero-one', name: 'Zero or one' },
+  { value: 'zero-many', name: 'Zero or more' },
+  { value: 'one-many', name: 'One or more' },
+];
+
+/** One row of an ER entity. `raw` holds a line we couldn't parse, kept verbatim. */
+export interface Attr {
+  type: string;
+  name: string;
+  /** e.g. "PK", "FK", "PK, FK", "UK" */
+  keys?: string;
+  comment?: string;
+  raw?: string;
+}
 export type Line = 'solid' | 'dotted' | 'thick';
 export type End = 'none' | 'arrow' | 'circle' | 'cross';
 export type Direction = 'TD' | 'LR' | 'BT' | 'RL';
@@ -33,6 +55,8 @@ export interface GNode {
   parent?: string;
   /** own `style` properties */
   css?: Css;
+  /** ER entities: attribute rows */
+  attrs?: Attr[];
   /** `classDef` class names applied to this node */
   classes?: string[];
   /** absolute canvas position */
@@ -65,6 +89,8 @@ export interface GEdge {
   tail: End;
   /** `linkStyle` properties */
   css?: Css;
+  /** ER relationships: cardinality at the source and target ends */
+  er?: { from: Card; to: Card };
 }
 
 /**
@@ -73,7 +99,7 @@ export interface GEdge {
  */
 export interface GraphMeta {
   /** which kind of diagram this is; flowchart when absent */
-  diagram?: 'flowchart' | 'state';
+  diagram?: DiagramKind;
   /** `flowchart-elk` instead of `flowchart` */
   keyword?: string;
   /** YAML frontmatter body (between the `---` lines) */
@@ -118,6 +144,7 @@ export const STATE_SHAPES: { value: Shape; name: string }[] = [
   { value: 'choice', name: 'Choice' },
   { value: 'fork', name: 'Fork / join' },
 ];
+export const ER_SHAPES: { value: Shape; name: string }[] = [{ value: 'entity', name: 'Entity' }];
 export const STATE_KINDS = new Set<Shape>(['start', 'end', 'choice', 'fork']);
 /** Shapes drawn without a text label. */
 export const LABELLESS = STATE_KINDS;

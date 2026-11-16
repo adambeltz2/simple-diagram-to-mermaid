@@ -38,6 +38,33 @@ export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
     if (draft.trim()) updateNodeData(id, { label: draft });
   };
 
+  if (data.shape === 'entity') {
+    const attrs = data.attrs ?? [];
+    return (
+      <div className={`entity-node${selected ? ' selected' : ''}`}>
+        <div className="entity-head">{data.label}</div>
+        {attrs.length === 0 && <div className="entity-empty">no attributes</div>}
+        {attrs.map((a, i) =>
+          a.raw !== undefined ? (
+            <div className="entity-row entity-raw" key={i}>
+              {a.raw}
+            </div>
+          ) : (
+            <div className="entity-row" key={i}>
+              <span className="t">{a.type}</span>
+              <span className="n">{a.name}</span>
+              <span className="k">{a.keys}</span>
+            </div>
+          ),
+        )}
+        <Handle id="t" type="source" position={Position.Top} />
+        <Handle id="r" type="source" position={Position.Right} />
+        <Handle id="b" type="source" position={Position.Bottom} />
+        <Handle id="l" type="source" position={Position.Left} />
+      </div>
+    );
+  }
+
   const svg = SVG_SHAPES[data.shape];
   const labelless = LABELLESS.has(data.shape);
   return (

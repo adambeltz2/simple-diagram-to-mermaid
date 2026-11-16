@@ -1,7 +1,16 @@
 import dagre from '@dagrejs/dagre';
-import type { GGroup, GNode, Graph, Shape } from './types';
+import type { Attr, GGroup, GNode, Graph, Shape } from './types';
 
-export function nodeSize(label: string, shape?: Shape): { w: number; h: number } {
+export function nodeSize(label: string, shape?: Shape, attrs?: Attr[]): { w: number; h: number } {
+  if (shape === 'entity') {
+    const rows = attrs ?? [];
+    const widest = Math.max(
+      label.length * 9 + 24,
+      ...rows.map((a) => (a.raw ?? `${a.type}  ${a.name}  ${a.keys ?? ''}`).length * 7 + 24),
+      120,
+    );
+    return { w: Math.round(widest), h: 34 + Math.max(rows.length, 1) * 22 };
+  }
   if (shape === 'start' || shape === 'end') return { w: 28, h: 28 };
   if (shape === 'choice') return { w: 36, h: 36 };
   if (shape === 'fork') return { w: 90, h: 10 };
@@ -36,7 +45,7 @@ export function fitGroups(graph: Graph): Graph {
     return d;
   };
   const order = [...byId.keys()].sort((a, b) => depth(b) - depth(a));
-  const nodeBox = (n: GNode) => ({ x: n.x, y: n.y, ...(() => { const s = nodeSize(n.label, n.shape); return { w: s.w, h: s.h }; })() });
+  const nodeBox = (n: GNode) => ({ x: n.x, y: n.y, ...(() => { const s = nodeSize(n.label, n.shape, n.attrs); return { w: s.w, h: s.h }; })() });
   for (const id of order) {
     const g = byId.get(id)!;
     const boxes = [
@@ -64,7 +73,7 @@ export function autoLayout(graph: Graph): Graph {
   const groupIds = new Set(graph.groups.map((x) => x.id));
   for (const gr of graph.groups) g.setNode(gr.id, { width: gr.w, height: gr.h });
   for (const n of graph.nodes) {
-    const { w, h } = nodeSize(n.label, n.shape);
+    const { w, h } = nodeSize(n.label, n.shape, n.attrs);
     g.setNode(n.id, { width: w, height: h });
   }
   for (const gr of graph.groups) if (gr.parent && groupIds.has(gr.parent)) g.setParent(gr.id, gr.parent);
@@ -89,7 +98,7 @@ export function autoLayout(graph: Graph): Graph {
     ...graph,
     nodes: graph.nodes.map((n) => {
       const p = g.node(n.id);
-      const { w, h } = nodeSize(n.label, n.shape);
+      const { w, h } = nodeSize(n.label, n.shape, n.attrs);
       return { ...n, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2) };
     }),
   };

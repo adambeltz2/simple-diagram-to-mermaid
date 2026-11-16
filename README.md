@@ -6,7 +6,9 @@ A drag-and-drop canvas (think draw.io) that is a **two-way editor for Mermaid fl
 Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canvas.
 
 ## Features
-- **Two diagram types**: flowcharts and **state diagrams** (`stateDiagram-v2`), switched from the toolbar. State diagrams support states, start/end markers (per composite scope), choice and fork/join nodes, composite states (nested, with their own direction), and `classDef`/`class`. Paste any `stateDiagram-v2` text and it opens as a state diagram. Converting between types maps node kinds sensibly (and drops styling the other type can't express)
+- **Three diagram types**: flowcharts, **state diagrams** and **ER diagrams** (`erDiagram`)
+- **ER diagrams**: entity tables with editable attributes (type, name, `PK`/`FK`/`UK`, comment), aliases, hyphenated and quoted names, and relationships with crow's-foot cardinality (one / zero-or-one / zero-or-more / one-or-more on each end) and identifying (solid) or non-identifying (dotted) lines. Paste any `erDiagram` and it opens as an ER diagram. Attribute lines the canvas can't parse are kept as text
+- **State diagrams** (`stateDiagram-v2`), switched from the toolbar. State diagrams support states, start/end markers (per composite scope), choice and fork/join nodes, composite states (nested, with their own direction), and `classDef`/`class`. Paste any `stateDiagram-v2` text and it opens as a state diagram. Converting between types maps node kinds sensibly (and drops styling the other type can't express)
 - Edges can start or end on a whole subgraph / composite state
 - Palette of 14 shapes (rectangle, rounded, stadium, decision, circle, database, hexagon, subroutine, parallelogram ×2, trapezoid ×2, flag, double circle) — drag or click to add. The newer `A@{ shape: cyl, label: "…" }` syntax is imported for the shapes above; other `@{ }` shapes (document, icons, …) are kept as-is
 - Connect nodes by dragging from a node's edge dot; edge styles: `-->`, `---`, `-.->`, `==>`, with labels; double-click a line to add or edit its label
@@ -28,7 +30,7 @@ The source of truth is a graph model (`src/mermaid/types.ts`). The canvas edits 
 Node positions are a canvas convenience only — Mermaid lays out its own diagrams.
 
 ## Not supported yet
-`@{ shape: ... }` shapes beyond the 14 above (kept as text), edge ids. State diagrams: notes (kept as text), concurrent regions (`--`, dropped with a warning), `<<join>>` exports as `<<fork>>`, per-node colors. Other diagram types (sequence, ER, class, …) aren't supported yet.
+`@{ shape: ... }` shapes beyond the 14 above (kept as text), edge ids. State diagrams: notes (kept as text), concurrent regions (`--`, dropped with a warning), `<<join>>` exports as `<<fork>>`, per-node colors. ER diagrams: the relationship word form (`one or more to zero or more`) is kept as text; per-node colors aren't available. Other diagram types (sequence, class, …) aren't supported yet.
 Unsupported lines are reported as warnings on import.
 
 ## Develop
