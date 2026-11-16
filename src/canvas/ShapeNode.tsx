@@ -7,6 +7,17 @@ import { StyleContext, nodeStyleVars } from './StyleContext';
 const SVG_SHAPES: Partial<Record<Shape, React.ReactNode>> = {
   diamond: <polygon points="50,1 99,50 50,99 1,50" />,
   hexagon: <polygon points="10,1 90,1 99,50 90,99 10,99 1,50" />,
+  subroutine: (
+    <>
+      <rect x="1" y="1" width="98" height="98" />
+      <path d="M9,1 V99 M91,1 V99" />
+    </>
+  ),
+  parallelogram: <polygon points="12,1 99,1 88,99 1,99" />,
+  'parallelogram-alt': <polygon points="1,1 88,1 99,99 12,99" />,
+  trapezoid: <polygon points="14,1 86,1 99,99 1,99" />,
+  'trapezoid-alt': <polygon points="1,1 99,1 86,99 14,99" />,
+  asymmetric: <polygon points="1,1 99,1 99,99 1,99 10,50" />,
   cylinder: (
     <>
       <path d="M1,12 A49,11 0 0 1 99,12 L99,88 A49,11 0 0 1 1,88 Z" />

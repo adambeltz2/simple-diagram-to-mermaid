@@ -5,16 +5,42 @@ export interface ParseResult {
   warnings: string[];
 }
 
-// Longest opener first so "((" wins over "(".
+// Longest opener first so "(((" wins over "((" wins over "(". Several shapes share an
+// opener and differ only in the closer; if one closer isn't found we try the next.
 const SHAPES: { open: string; close: string; shape: Shape }[] = [
+  { open: '(((', close: ')))', shape: 'doublecircle' },
   { open: '((', close: '))', shape: 'circle' },
   { open: '([', close: '])', shape: 'stadium' },
   { open: '[(', close: ')]', shape: 'cylinder' },
+  { open: '[[', close: ']]', shape: 'subroutine' },
+  { open: '[/', close: '/]', shape: 'parallelogram' },
+  { open: '[/', close: '\\]', shape: 'trapezoid' },
+  { open: '[\\', close: '\\]', shape: 'parallelogram-alt' },
+  { open: '[\\', close: '/]', shape: 'trapezoid-alt' },
   { open: '{{', close: '}}', shape: 'hexagon' },
   { open: '[', close: ']', shape: 'rect' },
   { open: '(', close: ')', shape: 'round' },
   { open: '{', close: '}', shape: 'diamond' },
+  { open: '>', close: ']', shape: 'asymmetric' },
 ];
+
+/** Names accepted by the newer `A@{ shape: name }` syntax, mapped to our shapes. */
+const SHAPE_NAMES: Record<string, Shape> = {
+  rect: 'rect', rectangle: 'rect', proc: 'rect', process: 'rect',
+  rounded: 'round', event: 'round',
+  stadium: 'stadium', terminal: 'stadium', pill: 'stadium',
+  cyl: 'cylinder', cylinder: 'cylinder', db: 'cylinder', database: 'cylinder',
+  circle: 'circle', circ: 'circle',
+  diam: 'diamond', diamond: 'diamond', decision: 'diamond', question: 'diamond',
+  hex: 'hexagon', hexagon: 'hexagon', prepare: 'hexagon',
+  'lean-r': 'parallelogram', 'in-out': 'parallelogram',
+  'lean-l': 'parallelogram-alt', 'out-in': 'parallelogram-alt',
+  'trap-b': 'trapezoid', 'trapezoid-bottom': 'trapezoid', priority: 'trapezoid',
+  'trap-t': 'trapezoid-alt', 'trapezoid-top': 'trapezoid-alt', manual: 'trapezoid-alt',
+  'fr-rect': 'subroutine', subproc: 'subroutine', subroutine: 'subroutine', 'framed-rectangle': 'subroutine',
+  'dbl-circ': 'doublecircle', 'double-circle': 'doublecircle',
+  odd: 'asymmetric',
+};
 
 export function unquoteLabel(raw: string): string {
   let s = raw.trim();
@@ -70,6 +96,33 @@ interface NodeRef {
   label?: string;
   shape?: Shape;
   classes?: string[];
+  /** an `A@{ ... }` definition we can't represent; kept verbatim */
+  raw?: string;
+}
+
+/** Parse the `{ shape: cyl, label: "x" }` body of `A@{ ... }`; null if we can't map it. */
+function parseShapeProps(body: string): { shape: Shape; label?: string } | null {
+  const props: Record<string, string> = {};
+  let cur = '';
+  let inQ = false;
+  const parts: string[] = [];
+  for (const ch of body) {
+    if (ch === '"') inQ = !inQ;
+    if (ch === ',' && !inQ) {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  for (const part of parts) {
+    const i = part.indexOf(':');
+    if (i > 0) props[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  const shape = SHAPE_NAMES[(props.shape ?? '').replace(/^"|"$/g, '').toLowerCase()];
+  if (!shape) return null;
+  // Anything besides shape/label (icon, img, pos, ...) can't be shown, so keep the original line.
+  if (Object.keys(props).some((k) => k !== 'shape' && k !== 'label')) return null;
+  return { shape, label: props.label !== undefined ? unquoteLabel(props.label) : undefined };
 }
 
 /** Parse `id` or `id[label]` etc. at the start of `s`. */
@@ -78,18 +131,35 @@ function parseNodeBase(s: string): { ref: NodeRef; rest: string } | null {
   if (!m) return null;
   const id = m[0];
   const after = s.slice(id.length);
+
+  if (after.startsWith('@{')) {
+    let end = -1;
+    let inQ = false;
+    for (let k = 2; k < after.length; k++) {
+      if (after[k] === '"') inQ = !inQ;
+      else if (after[k] === '}' && !inQ) {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) return null;
+    const parsed = parseShapeProps(after.slice(2, end));
+    const rest = after.slice(end + 1);
+    if (parsed) return { ref: { id, shape: parsed.shape, label: parsed.label ?? id }, rest };
+    return { ref: { id, raw: `${id}${after.slice(0, end + 1)}` }, rest };
+  }
+
   for (const sh of SHAPES) {
     if (!after.startsWith(sh.open)) continue;
     const body = after.slice(sh.open.length);
     let end: number;
     if (body.startsWith('"')) {
       const q = body.indexOf('"', 1);
-      if (q < 0) return null;
-      end = body.indexOf(sh.close, q + 1);
+      end = q < 0 ? -1 : body.indexOf(sh.close, q + 1);
     } else {
       end = body.indexOf(sh.close);
     }
-    if (end < 0) return null;
+    if (end < 0) continue;
     return {
       ref: { id, label: unquoteLabel(body.slice(0, end)), shape: sh.shape },
       rest: body.slice(end + sh.close.length),
@@ -218,7 +288,12 @@ export function parseMermaid(input: string): ParseResult {
     warnings.push(`Line ${lineNo}: ${why} — kept as-is (not shown on the canvas): "${stmt}"`);
   };
 
+  let lineNo = 0;
   const touch = (r: NodeRef) => {
+    if (r.raw) {
+      extras.push(r.raw);
+      warnings.push(`Line ${lineNo}: this shape definition isn't supported here — kept as-is: "${r.raw}"`);
+    }
     const existing = nodes.get(r.id);
     if (!existing) {
       nodes.set(r.id, {
@@ -263,7 +338,7 @@ export function parseMermaid(input: string): ParseResult {
   const lines = text.split(/\r?\n/);
   let directive: string[] | null = null; // multi-line %%{ ... }%%
   lines.forEach((rawLine, i) => {
-    const lineNo = i + 1 + lineOffset;
+    lineNo = i + 1 + lineOffset;
     let line = rawLine.trim();
 
     if (directive) {

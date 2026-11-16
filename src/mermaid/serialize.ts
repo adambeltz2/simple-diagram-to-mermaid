@@ -8,6 +8,13 @@ const WRAP: Record<Shape, [string, string]> = {
   circle: ['((', '))'],
   cylinder: ['[(', ')]'],
   hexagon: ['{{', '}}'],
+  subroutine: ['[[', ']]'],
+  parallelogram: ['[/', '/]'],
+  'parallelogram-alt': ['[\\', '\\]'],
+  trapezoid: ['[/', '\\]'],
+  'trapezoid-alt': ['[\\', '/]'],
+  asymmetric: ['>', ']'],
+  doublecircle: ['(((', ')))'],
 };
 
 const HEAD: Record<Exclude<End, 'none'>, string> = { arrow: '>', circle: 'o', cross: 'x' };

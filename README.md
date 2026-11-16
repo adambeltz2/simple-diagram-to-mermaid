@@ -6,7 +6,7 @@ A drag-and-drop canvas (think draw.io) that is a **two-way editor for Mermaid fl
 Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canvas.
 
 ## Features
-- Palette of 7 shapes (rectangle, rounded, stadium, decision, circle, database, hexagon) — drag or click to add
+- Palette of 14 shapes (rectangle, rounded, stadium, decision, circle, database, hexagon, subroutine, parallelogram ×2, trapezoid ×2, flag, double circle) — drag or click to add. The newer `A@{ shape: cyl, label: "…" }` syntax is imported for the shapes above; other `@{ }` shapes (document, icons, …) are kept as-is
 - Connect nodes by dragging from a node's edge dot; edge styles: `-->`, `---`, `-.->`, `==>`, with labels; double-click a line to add or edit its label
 - **Subgraphs**: a *Group* box on the canvas = Mermaid `subgraph … end` (nesting supported). Drop nodes in, select nodes and click *Group selection*, or *Ungroup* to keep the nodes
 - **Colors and styles**: fill / border / text color pickers for nodes and subgraphs, line style and color for edges; imports and re-exports `style`, `classDef`, `class`, `:::class` and `linkStyle`
@@ -26,7 +26,7 @@ The source of truth is a graph model (`src/mermaid/types.ts`). The canvas edits 
 Node positions are a canvas convenience only — Mermaid lays out its own diagrams.
 
 ## Not supported yet
-edges to/from a whole subgraph, `@{ shape: ... }` shapes, edge ids, other diagram types.
+edges to/from a whole subgraph, `@{ shape: ... }` shapes beyond the 14 above (kept as text), edge ids, other diagram types.
 Unsupported lines are reported as warnings on import.
 
 ## Develop

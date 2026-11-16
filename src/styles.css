@@ -24,6 +24,12 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .swatch-round { border-radius: 4px; } .swatch-stadium { border-radius: 8px; } .swatch-circle { border-radius: 50%; }
 .swatch-diamond { transform: rotate(45deg) scale(.7); } .swatch-hexagon { clip-path: polygon(15% 0,85% 0,100% 50%,85% 100%,15% 100%,0 50%); background: var(--accent); }
 .swatch-cylinder { border-radius: 50% / 30%; }
+.swatch-subroutine { border-style: double; border-left-width: 5px; border-right-width: 5px; }
+.swatch-parallelogram, .swatch-parallelogram-alt, .swatch-trapezoid, .swatch-trapezoid-alt, .swatch-asymmetric { background: var(--accent); }
+.swatch-parallelogram { clip-path: polygon(22% 0, 100% 0, 78% 100%, 0 100%); } .swatch-parallelogram-alt { clip-path: polygon(0 0, 78% 0, 100% 100%, 22% 100%); }
+.swatch-trapezoid { clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%); } .swatch-trapezoid-alt { clip-path: polygon(0 0, 100% 0, 82% 100%, 18% 100%); }
+.swatch-asymmetric { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 18% 50%); }
+.swatch-doublecircle { border-radius: 50%; width: 18px; height: 18px; outline: 2px solid var(--accent); outline-offset: 1px; }
 .inspector { display: grid; gap: 8px; }
 .inspector label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
 .inspector textarea, .inspector input, .inspector select { width: 100%; color: var(--text); }
@@ -40,7 +46,9 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .shape-node.selected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
 .shape-round { border-radius: 12px; } .shape-stadium { border-radius: 999px; padding: 12px 26px; }
 .shape-circle { border-radius: 50%; min-width: 90px; min-height: 90px; padding: 22px; display: flex; align-items: center; justify-content: center; }
-.shape-diamond, .shape-hexagon, .shape-cylinder { background: transparent; border: none; }
+.shape-diamond, .shape-hexagon, .shape-cylinder, .shape-subroutine, .shape-parallelogram, .shape-parallelogram-alt, .shape-trapezoid, .shape-trapezoid-alt, .shape-asymmetric { background: transparent; border: none; }
+.shape-subroutine { padding: 12px 30px; } .shape-parallelogram, .shape-parallelogram-alt, .shape-trapezoid, .shape-trapezoid-alt { padding: 14px 38px; } .shape-asymmetric { padding: 12px 26px 12px 36px; }
+.shape-doublecircle { border-radius: 50%; min-width: 100px; min-height: 100px; padding: 26px; display: flex; align-items: center; justify-content: center; outline: 2px solid var(--n-stroke, var(--accent)); outline-offset: 4px; }
 .shape-diamond { padding: 26px 40px; } .shape-hexagon { padding: 14px 30px; } .shape-cylinder { padding: 26px 18px 18px; }
 .shape-bg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .shape-bg * { fill: var(--n-fill, var(--node-bg)); stroke: var(--n-stroke, var(--accent)); stroke-width: var(--n-sw, 2px); stroke-dasharray: var(--n-dash, none); vector-effect: non-scaling-stroke; }

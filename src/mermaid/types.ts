@@ -5,7 +5,14 @@ export type Shape =
   | 'diamond'
   | 'circle'
   | 'cylinder'
-  | 'hexagon';
+  | 'hexagon'
+  | 'subroutine'
+  | 'parallelogram'
+  | 'parallelogram-alt'
+  | 'trapezoid'
+  | 'trapezoid-alt'
+  | 'asymmetric'
+  | 'doublecircle';
 
 /** CSS-like properties as written in Mermaid `style` / `classDef` / `linkStyle` lines. */
 export type Css = Record<string, string>;
@@ -87,6 +94,13 @@ export const SHAPES: { value: Shape; name: string }[] = [
   { value: 'circle', name: 'Circle' },
   { value: 'cylinder', name: 'Database' },
   { value: 'hexagon', name: 'Hexagon' },
+  { value: 'subroutine', name: 'Subroutine' },
+  { value: 'parallelogram', name: 'Parallelogram  /' },
+  { value: 'parallelogram-alt', name: 'Parallelogram  \\' },
+  { value: 'trapezoid', name: 'Trapezoid' },
+  { value: 'trapezoid-alt', name: 'Trapezoid (flipped)' },
+  { value: 'asymmetric', name: 'Flag' },
+  { value: 'doublecircle', name: 'Double circle' },
 ];
 
 export const LINES: { value: Line; name: string }[] = [

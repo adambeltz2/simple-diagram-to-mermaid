@@ -9,6 +9,13 @@ export function nodeSize(label: string, shape?: Shape): { w: number; h: number }
   if (shape === 'diamond') {
     w += 50;
     h += 30;
+  } else if (shape === 'parallelogram' || shape === 'parallelogram-alt' || shape === 'trapezoid' || shape === 'trapezoid-alt') {
+    w += 40;
+  } else if (shape === 'subroutine' || shape === 'asymmetric') {
+    w += 20;
+  } else if (shape === 'doublecircle') {
+    w += 20;
+    h += 20;
   }
   return { w, h };
 }

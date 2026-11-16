@@ -310,3 +310,75 @@ flowchart-elk LR
     expect(graph.edges).toHaveLength(1);
   });
 });
+
+describe('more shapes', () => {
+  const cases: [string, string][] = [
+    ['A[[Sub]]', 'subroutine'],
+    ['A[/Para/]', 'parallelogram'],
+    ['A[\\Para\\]', 'parallelogram-alt'],
+    ['A[/Trap\\]', 'trapezoid'],
+    ['A[\\Trap/]', 'trapezoid-alt'],
+    ['A>Flag]', 'asymmetric'],
+    ['A(((Dbl)))', 'doublecircle'],
+    ['A((Circ))', 'circle'],
+    ['A[Rect]', 'rect'],
+  ];
+  it.each(cases)('parses %s as %s', (text, shape) => {
+    const { graph, warnings } = parseMermaid(`flowchart TD\n${text}`);
+    expect(warnings).toEqual([]);
+    expect(graph.nodes[0].shape).toBe(shape);
+  });
+
+  it('round-trips every shape, including quoted tricky labels', () => {
+    const shapes = [
+      'rect', 'round', 'stadium', 'diamond', 'circle', 'cylinder', 'hexagon', 'subroutine',
+      'parallelogram', 'parallelogram-alt', 'trapezoid', 'trapezoid-alt', 'asymmetric', 'doublecircle',
+    ] as const;
+    const g: Graph = {
+      direction: 'TD',
+      groups: [],
+      edges: [],
+      nodes: shapes.map((shape, i) => ({ id: `N${i}`, label: `a/b\\c]) (x) "q"`, shape, x: 0, y: 0 })),
+    };
+    const text = toMermaid(g);
+    const back = parseMermaid(text);
+    expect(back.warnings).toEqual([]);
+    expect(back.graph.nodes.map((n) => [n.shape, n.label])).toEqual(g.nodes.map((n) => [n.shape, n.label]));
+  });
+
+  it('chains edges between the new shapes', () => {
+    const { graph, warnings } = parseMermaid('flowchart TD\nA[/in/] --> B[[proc]] --> C>flag] --> D(((end)))');
+    expect(warnings).toEqual([]);
+    expect(graph.nodes.map((n) => n.shape)).toEqual(['parallelogram', 'subroutine', 'asymmetric', 'doublecircle']);
+    expect(graph.edges).toHaveLength(3);
+  });
+});
+
+describe('@{ shape } syntax', () => {
+  it('maps known shape names and labels', () => {
+    const { graph, warnings } = parseMermaid(`flowchart TD
+      A@{ shape: cyl, label: "Store" } --> B@{ shape: diam }
+      B --> C@{ shape: lean-r, label: "In, out" }`);
+    expect(warnings).toEqual([]);
+    expect(graph.nodes.map((n) => [n.id, n.shape, n.label])).toEqual([
+      ['A', 'cylinder', 'Store'],
+      ['B', 'diamond', 'B'],
+      ['C', 'parallelogram', 'In, out'],
+    ]);
+    expect(graph.edges).toHaveLength(2);
+  });
+
+  it('keeps definitions it cannot represent, and still draws the node', () => {
+    const { graph, warnings } = parseMermaid('flowchart TD\nA@{ shape: doc, label: "Report" } --> B');
+    expect(graph.extras).toEqual(['A@{ shape: doc, label: "Report" }']);
+    expect(graph.nodes.map((n) => n.id)).toEqual(['A', 'B']);
+    expect(graph.edges).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+    expect(toMermaid(graph)).toContain('A@{ shape: doc, label: "Report" }');
+  });
+
+  it('keeps definitions with extra properties such as icons', () => {
+    const { graph } = parseMermaid('flowchart TD\nA@{ shape: rect, icon: "fa:car" }');
+    expect(graph.extras).toEqual(['A@{ shape: rect, icon: "fa:car" }']);
+  });
+});
