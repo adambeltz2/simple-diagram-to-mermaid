@@ -127,16 +127,23 @@ describe('subgraphs', () => {
     expect(parent).toEqual({ X: undefined, A: 'one', B: 'one', C: 'Inner_Box', D: 'two' });
   });
 
-  it('warns and ignores edges to a subgraph, and unclosed subgraphs', () => {
+  it('allows edges to and from a subgraph, even before it is declared', () => {
     const { graph, warnings } = parseMermaid(`flowchart TD
+      B --> S
+      S --> C
       subgraph S
         A
-      end
-      B --> S
+      end`);
+    expect(warnings).toEqual([]);
+    expect(graph.nodes.map((n) => n.id)).toEqual(['B', 'C', 'A']);
+    expect(graph.edges.map((e) => `${e.source}>${e.target}`)).toEqual(['B>S', 'S>C']);
+    expect(toMermaid(graph)).toContain('B --> S');
+  });
+
+  it('warns about an unclosed subgraph', () => {
+    const { warnings } = parseMermaid(`flowchart TD
       subgraph T
         C`);
-    expect(graph.edges).toEqual([]);
-    expect(warnings.some((w) => w.includes('edges to/from a subgraph'))).toBe(true);
     expect(warnings.some((w) => w.includes('missing its "end"'))).toBe(true);
   });
 

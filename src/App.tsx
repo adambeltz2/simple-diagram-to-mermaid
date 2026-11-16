@@ -32,13 +32,14 @@ import {
   type FlowNode,
 } from './mermaid/flow';
 import { autoLayout, fitGroups, shouldKeepPositions } from './mermaid/layout';
-import { parseMermaid } from './mermaid/parse';
-import { toMermaid } from './mermaid/serialize';
+import { convertDiagram, parseDiagram, toDiagram } from './mermaid/diagram';
 import { metaOf, normalizeGraph } from './mermaid/normalize';
 import {
   END_PRESETS,
   LINES,
   SHAPES,
+  STATE_SHAPES,
+  LABELLESS,
   effectiveCss,
   type Css,
   type Direction,
@@ -219,7 +220,9 @@ function Editor() {
   }, []);
 
   const graph = useMemo(() => flowToGraph(direction, nodes, edges, meta), [direction, nodes, edges, meta]);
-  const generated = useMemo(() => toMermaid(graph), [graph]);
+  const generated = useMemo(() => toDiagram(graph), [graph]);
+  const isState = meta.diagram === 'state';
+  const paletteShapes = isState ? STATE_SHAPES : SHAPES;
 
   useEffect(() => {
     try {
@@ -243,7 +246,7 @@ function Editor() {
 
   // ---- Mermaid text -> canvas -------------------------------------------
   const applyText = (text: string) => {
-    const { graph: parsed, warnings: w } = parseMermaid(text);
+    const { graph: parsed, warnings: w } = parseDiagram(text);
     const known = new Map(graph.nodes.map((n) => [n.id, n]));
     // Small edits keep the user's placement; a different diagram gets a fresh layout.
     const anyKnown = shouldKeepPositions(parsed.nodes, known);
@@ -274,7 +277,7 @@ function Editor() {
           });
         return [
           ...ns.map((n) => ({ ...n, selected: false })),
-          { id, type: 'shape' as const, position: pos, selected: true, data: { label: `Node ${id}`, shape } },
+          { id, type: 'shape' as const, position: pos, selected: true, data: { label: LABELLESS.has(shape) ? '' : isState ? `State ${id}` : `Node ${id}`, shape } },
         ];
       });
     },
@@ -299,7 +302,7 @@ function Editor() {
           width: 260,
           height: 160,
           selected: true,
-          data: { label: 'Group', shape: 'rect' },
+          data: { label: isState ? 'Composite' : 'Group', shape: 'rect' },
         };
         return reparent(orderNodes([...ns.map((n) => ({ ...n, selected: false })), g]), id);
       });
@@ -438,6 +441,22 @@ function Editor() {
       <header className="toolbar">
         <strong className="brand">Diagram → Mermaid</strong>
         <label>
+          Diagram{' '}
+          <select
+            value={isState ? 'state' : 'flowchart'}
+            onChange={(e) => {
+              const to = e.target.value as 'flowchart' | 'state';
+              if (nodes.length && !confirm(`Convert this diagram to a ${to === 'state' ? 'state diagram' : 'flowchart'}? Some styling may be lost.`)) return;
+              load(autoLayout(convertDiagram(graph, to)), true);
+              setDraft(null);
+              setWarnings([]);
+            }}
+          >
+            <option value="flowchart">Flowchart</option>
+            <option value="state">State diagram</option>
+          </select>
+        </label>
+        <label>
           Direction{' '}
           <select value={direction} onChange={(e) => setDirection(e.target.value as Direction)}>
             <option value="TD">Top → Down</option>
@@ -476,7 +495,7 @@ function Editor() {
             if (confirm('Clear the canvas?')) {
               setNodes([]);
               setEdges([]);
-              setMeta({});
+              setMeta(meta.diagram ? { diagram: meta.diagram } : {});
               setDraft(null);
               setWarnings([]);
             }
@@ -512,7 +531,7 @@ function Editor() {
         <h3>Shapes</h3>
         <p className="hint">Drag onto the canvas, or click to add.</p>
         <div className="palette">
-          {SHAPES.map((s) => (
+          {paletteShapes.map((s) => (
             <button
               key={s.value}
               className="palette-item"
@@ -532,21 +551,23 @@ function Editor() {
             title="A Mermaid subgraph. Drop nodes inside it."
           >
             <span className="swatch swatch-group" />
-            Group
+            {isState ? 'Composite state' : 'Group'}
           </button>
         </div>
 
         <h3>Inspector</h3>
         {oneNode && (
           <div className="inspector">
-            <label>
-              Label
-              <textarea
-                rows={3}
-                value={oneNode.data.label}
-                onChange={(e) => patchNode(oneNode.id, { label: e.target.value })}
-              />
-            </label>
+            {!LABELLESS.has(oneNode.data.shape) && (
+              <label>
+                {isState ? 'Name' : 'Label'}
+                <textarea
+                  rows={3}
+                  value={oneNode.data.label}
+                  onChange={(e) => patchNode(oneNode.id, { label: e.target.value })}
+                />
+              </label>
+            )}
             {oneNode.type !== 'group' && (
               <label>
                 Shape
@@ -554,7 +575,7 @@ function Editor() {
                   value={oneNode.data.shape}
                   onChange={(e) => patchNode(oneNode.id, { shape: e.target.value as Shape })}
                 >
-                  {SHAPES.map((s) => (
+                  {paletteShapes.map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.name}
                     </option>
@@ -577,7 +598,7 @@ function Editor() {
                 </select>
               </label>
             )}
-            {(() => {
+            {!isState && (() => {
               const fx = effectiveCss(oneNode.data.classes, meta.classDefs, oneNode.data.css);
               const own = oneNode.data.css ?? {};
               return (
@@ -616,6 +637,7 @@ function Editor() {
                   onChange={(e) => patchEdge(oneEdge.id, { label: e.target.value })}
                 />
               </label>
+              {!isState && (<>
               <label>
                 Line
                 <select value={d.line} onChange={(e) => patchEdge(oneEdge.id, { data: { line: e.target.value as Line } })}>
@@ -659,6 +681,7 @@ function Editor() {
                   patchEdge(oneEdge.id, { data: { css: Object.keys(css).length ? css : undefined } });
                 }}
               />
+              </>)}
             </div>
           );
         })()}
@@ -679,7 +702,7 @@ function Editor() {
         {!oneNode && !oneEdge && selNode.length === 0 && (
           <p className="hint">
             Select a node or edge to edit it. Double-click a node or a line to edit its label. Drag from a node's edge dot to
-            another node to connect. Press Delete to remove. Pick colors and arrowheads in the inspector. Drop nodes into a Group box to make a Mermaid subgraph (deleting a group deletes its contents; use Ungroup to keep them). Ctrl+Z / Ctrl+Shift+Z to undo / redo.
+            another node to connect. Press Delete to remove. Pick colors and arrowheads in the inspector (flowcharts). Drop nodes into a Group box to make a Mermaid subgraph (deleting a group deletes its contents; use Ungroup to keep them). Ctrl+Z / Ctrl+Shift+Z to undo / redo.
           </p>
         )}
       </aside>

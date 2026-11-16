@@ -15,6 +15,11 @@ const WRAP: Record<Shape, [string, string]> = {
   'trapezoid-alt': ['[\\', '/]'],
   asymmetric: ['>', ']'],
   doublecircle: ['(((', ')))'],
+  // state-diagram kinds only reach here if a state diagram is exported as a flowchart
+  start: ['((', '))'],
+  end: ['(((', ')))'],
+  choice: ['{', '}'],
+  fork: ['[', ']'],
 };
 
 const HEAD: Record<Exclude<End, 'none'>, string> = { arrow: '>', circle: 'o', cross: 'x' };

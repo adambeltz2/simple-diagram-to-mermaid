@@ -1,10 +1,11 @@
 import { useContext, useState } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import type { FlowNode } from '../mermaid/flow';
-import { effectiveCss, type Shape } from '../mermaid/types';
+import { LABELLESS, effectiveCss, type Shape } from '../mermaid/types';
 import { StyleContext, nodeStyleVars } from './StyleContext';
 
 const SVG_SHAPES: Partial<Record<Shape, React.ReactNode>> = {
+  choice: <polygon points="50,1 99,50 50,99 1,50" />,
   diamond: <polygon points="50,1 99,50 50,99 1,50" />,
   hexagon: <polygon points="10,1 90,1 99,50 90,99 10,99 1,50" />,
   subroutine: (
@@ -38,11 +39,13 @@ export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
   };
 
   const svg = SVG_SHAPES[data.shape];
+  const labelless = LABELLESS.has(data.shape);
   return (
     <div
       className={`shape-node shape-${data.shape}${selected ? ' selected' : ''}`}
       style={nodeStyleVars(effectiveCss(data.classes, classDefs, data.css))}
       onDoubleClick={() => {
+        if (labelless) return;
         setDraft(data.label);
         setEditing(true);
       }}
@@ -52,6 +55,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
           {svg}
         </svg>
       )}
+      {!labelless && (
       <div className="shape-label">
         {editing ? (
           <textarea
@@ -74,6 +78,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<FlowNode>) {
           data.label
         )}
       </div>
+      )}
       <Handle id="t" type="source" position={Position.Top} />
       <Handle id="r" type="source" position={Position.Right} />
       <Handle id="b" type="source" position={Position.Bottom} />

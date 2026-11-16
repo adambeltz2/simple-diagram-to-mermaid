@@ -2,6 +2,9 @@ import dagre from '@dagrejs/dagre';
 import type { GGroup, GNode, Graph, Shape } from './types';
 
 export function nodeSize(label: string, shape?: Shape): { w: number; h: number } {
+  if (shape === 'start' || shape === 'end') return { w: 28, h: 28 };
+  if (shape === 'choice') return { w: 36, h: 36 };
+  if (shape === 'fork') return { w: 90, h: 10 };
   const lines = label.split('\n');
   const longest = Math.max(...lines.map((l) => l.length), 4);
   let w = Math.max(110, longest * 8 + 40);
@@ -66,7 +69,21 @@ export function autoLayout(graph: Graph): Graph {
   }
   for (const gr of graph.groups) if (gr.parent && groupIds.has(gr.parent)) g.setParent(gr.id, gr.parent);
   for (const n of graph.nodes) if (n.parent && groupIds.has(n.parent)) g.setParent(n.id, n.parent);
-  for (const e of graph.edges) g.setEdge(e.source, e.target);
+  // dagre can't route edges to a cluster, so aim them at a node inside it.
+  const inside = (n: GNode, gid: string) => {
+    for (let p = n.parent, d = 0; p && d < 50; d++) {
+      if (p === gid) return true;
+      p = graph.groups.find((x) => x.id === p)?.parent;
+    }
+    return false;
+  };
+  const leaf = (id: string) =>
+    groupIds.has(id) ? graph.nodes.find((n) => inside(n, id))?.id : id;
+  for (const e of graph.edges) {
+    const s = leaf(e.source);
+    const t = leaf(e.target);
+    if (s && t && s !== t) g.setEdge(s, t);
+  }
   dagre.layout(g);
   const laid: Graph = {
     ...graph,

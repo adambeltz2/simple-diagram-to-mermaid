@@ -12,7 +12,12 @@ export type Shape =
   | 'trapezoid'
   | 'trapezoid-alt'
   | 'asymmetric'
-  | 'doublecircle';
+  | 'doublecircle'
+  // state diagrams
+  | 'start'
+  | 'end'
+  | 'choice'
+  | 'fork';
 
 /** CSS-like properties as written in Mermaid `style` / `classDef` / `linkStyle` lines. */
 export type Css = Record<string, string>;
@@ -67,6 +72,8 @@ export interface GEdge {
  * even when the canvas can't show them.
  */
 export interface GraphMeta {
+  /** which kind of diagram this is; flowchart when absent */
+  diagram?: 'flowchart' | 'state';
   /** `flowchart-elk` instead of `flowchart` */
   keyword?: string;
   /** YAML frontmatter body (between the `---` lines) */
@@ -102,6 +109,18 @@ export const SHAPES: { value: Shape; name: string }[] = [
   { value: 'asymmetric', name: 'Flag' },
   { value: 'doublecircle', name: 'Double circle' },
 ];
+
+/** What the palette offers for each diagram type. */
+export const STATE_SHAPES: { value: Shape; name: string }[] = [
+  { value: 'round', name: 'State' },
+  { value: 'start', name: 'Start' },
+  { value: 'end', name: 'End' },
+  { value: 'choice', name: 'Choice' },
+  { value: 'fork', name: 'Fork / join' },
+];
+export const STATE_KINDS = new Set<Shape>(['start', 'end', 'choice', 'fork']);
+/** Shapes drawn without a text label. */
+export const LABELLESS = STATE_KINDS;
 
 export const LINES: { value: Line; name: string }[] = [
   { value: 'solid', name: 'Solid' },

@@ -1,5 +1,5 @@
 import { useContext, useState } from 'react';
-import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import type { FlowNode } from '../mermaid/flow';
 import { effectiveCss } from '../mermaid/types';
 import { StyleContext, nodeStyleVars } from './StyleContext';
@@ -26,6 +26,10 @@ export function GroupNode({ id, data, selected }: NodeProps<FlowNode>) {
       }}
     >
       <NodeResizer isVisible={selected} minWidth={140} minHeight={90} />
+      <Handle id="t" type="source" position={Position.Top} />
+      <Handle id="r" type="source" position={Position.Right} />
+      <Handle id="b" type="source" position={Position.Bottom} />
+      <Handle id="l" type="source" position={Position.Left} />
       <div className="group-label">
         {editing ? (
           <input

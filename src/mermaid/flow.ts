@@ -219,7 +219,7 @@ export function flowToGraph(
       };
     });
 
-  const ids = new Set(gn.map((n) => n.id));
+  const ids = new Set([...gn.map((n) => n.id), ...groups.map((g) => g.id)]);
   const ge: GEdge[] = edges
     .filter((e) => ids.has(e.source) && ids.has(e.target))
     .map((e) => ({

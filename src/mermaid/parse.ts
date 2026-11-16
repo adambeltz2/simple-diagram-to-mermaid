@@ -75,6 +75,36 @@ export function parseCss(s: string): Css {
   return out;
 }
 
+/** Pull a leading `---` YAML frontmatter block off the text. */
+export function extractFrontmatter(input: string): { text: string; frontmatter?: string; lineOffset: number } {
+  const fm = /^\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(input);
+  if (!fm) return { text: input, lineOffset: 0 };
+  return { text: input.slice(fm[0].length), frontmatter: fm[1], lineOffset: fm[0].split('\n').length - 1 };
+}
+
+/** Collects `%%{ ... }%%` directives (possibly spanning lines); `feed` returns true if it consumed the line. */
+export function directiveCollector() {
+  const preamble: string[] = [];
+  let open: string[] | null = null;
+  const feed = (line: string): boolean => {
+    if (open) {
+      open.push(line);
+      if (line.includes('}%%')) {
+        preamble.push(open.join('\n'));
+        open = null;
+      }
+      return true;
+    }
+    if (line.startsWith('%%{')) {
+      if (line.includes('}%%')) preamble.push(line);
+      else open = [line];
+      return true;
+    }
+    return false;
+  };
+  return { preamble, feed };
+}
+
 /** Split on `;` outside of double quotes. */
 function splitStatements(line: string): string[] {
   const out: string[] = [];
@@ -262,7 +292,6 @@ export function parseMermaid(input: string): ParseResult {
   const stack: string[] = [];
   const edges: GEdge[] = [];
   const extras: string[] = [];
-  const preamble: string[] = [];
   const classDefs: Record<string, Css> = {};
   const classStmts: [string[], string[]][] = [];
   const styleStmts: [string[], Css][] = [];
@@ -271,16 +300,9 @@ export function parseMermaid(input: string): ParseResult {
   let direction: Direction = 'TD';
   let sawHeader = false;
 
-  // YAML frontmatter: kept verbatim.
-  let frontmatter: string | undefined;
-  let text = input;
-  let lineOffset = 0;
-  const fm = /^\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
-  if (fm) {
-    frontmatter = fm[1];
-    lineOffset = fm[0].split('\n').length - 1;
-    text = text.slice(fm[0].length);
-  }
+  const { text, frontmatter, lineOffset } = extractFrontmatter(input);
+  const directives = directiveCollector();
+  const preamble = directives.preamble;
 
   const current = () => stack[stack.length - 1];
   const keep = (lineNo: number, stmt: string, why: string) => {
@@ -289,7 +311,9 @@ export function parseMermaid(input: string): ParseResult {
   };
 
   let lineNo = 0;
+  let isGroupId: (id: string) => boolean = () => false;
   const touch = (r: NodeRef) => {
+    if (isGroupId(r.id)) return; // a subgraph used as an edge endpoint, not a node
     if (r.raw) {
       extras.push(r.raw);
       warnings.push(`Line ${lineNo}: this shape definition isn't supported here — kept as-is: "${r.raw}"`);
@@ -336,24 +360,19 @@ export function parseMermaid(input: string): ParseResult {
   };
 
   const lines = text.split(/\r?\n/);
-  let directive: string[] | null = null; // multi-line %%{ ... }%%
+  // Subgraph ids can be used as edge endpoints before the subgraph is declared.
+  const declared = new Set<string>();
+  for (const l of lines) {
+    const m = /^\s*subgraph\s+([A-Za-z0-9_]+)\s*(?:\[.*\])?\s*$/i.exec(l);
+    if (m) declared.add(m[1]);
+  }
+  isGroupId = (id: string) => declared.has(id) || groups.has(id);
+
   lines.forEach((rawLine, i) => {
     lineNo = i + 1 + lineOffset;
     let line = rawLine.trim();
 
-    if (directive) {
-      directive.push(line);
-      if (line.includes('}%%')) {
-        preamble.push(directive.join('\n'));
-        directive = null;
-      }
-      return;
-    }
-    if (line.startsWith('%%{')) {
-      if (line.includes('}%%')) preamble.push(line);
-      else directive = [line];
-      return;
-    }
+    if (directives.feed(line)) return;
     line = line.replace(/^%%.*$/, '').trim(); // plain comment lines are dropped
     if (!line) return;
 
@@ -410,10 +429,6 @@ export function parseMermaid(input: string): ParseResult {
         keep(lineNo, stmt, 'could not parse');
         continue;
       }
-      if (group.refs.some((r) => groups.has(r.id))) {
-        keep(lineNo, stmt, 'edges to/from a subgraph are not supported');
-        continue;
-      }
       group.refs.forEach(touch);
       let rest = group.rest.trim();
       while (rest) {
@@ -425,10 +440,6 @@ export function parseMermaid(input: string): ParseResult {
         const next = parseNodeGroup(op.rest);
         if (!next) {
           keep(lineNo, rest, 'edge has no target');
-          break;
-        }
-        if (next.refs.some((r) => groups.has(r.id))) {
-          keep(lineNo, rest, 'edges to/from a subgraph are not supported');
           break;
         }
         next.refs.forEach(touch);

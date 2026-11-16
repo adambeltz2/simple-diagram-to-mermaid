@@ -25,6 +25,7 @@ export function normalizeGraph(raw: unknown): Graph | null {
 /** The parts of a graph the canvas doesn't edit but must carry along. */
 export function metaOf(g: GraphMeta): GraphMeta {
   const out: GraphMeta = {};
+  if (g.diagram === 'state') out.diagram = 'state';
   if (g.keyword) out.keyword = g.keyword;
   if (g.frontmatter !== undefined) out.frontmatter = g.frontmatter;
   if (g.preamble?.length) out.preamble = g.preamble;
