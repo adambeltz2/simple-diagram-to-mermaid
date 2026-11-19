@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Preview } from '../Preview';
-import { isGanttText } from '../doc/markdown';
-import { Toast, useToast } from '../doc/useToast';
-import { useDocSync } from '../doc/useDocSync';
-import { type Route } from '../router';
+import { isGanttText } from '../io/markdown';
+import { Toast, useToast } from '../io/useToast';
+import { useImportExport } from '../io/useImportExport';
 import { useTheme } from '../theme';
 import { GanttChart } from './GanttChart';
 import {
@@ -48,7 +47,7 @@ const AXIS = [
   ['', 'Default (2026-12-01)'], ['%b %d', 'Dec 01'], ['%d %b', '01 Dec'], ['%m/%d', '12/01'], ['%Y-%m-%d', '2026-12-01'],
 ] as const;
 
-export function GanttPage({ route }: { route: Route }) {
+export function GanttPage() {
   const theme = useTheme();
   const init = useMemo(load, []);
   const [text, setText] = useState(init);
@@ -116,41 +115,32 @@ export function GanttPage({ route }: { route: Route }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  /* ----- save / sync: the same rules in every workspace ----- */
-  const doc = useDocSync({
+  /* ----- import / export: the same in every workspace ----- */
+  const io = useImportExport({
     page: 'gantt',
-    route,
     text,
     svg,
     fileBase: 'plan',
     isMine: isGanttText,
     flash,
-    onLoad: (t, source) => {
-      if (source === 'link') {
-        past.current = [];
-        future.current = [];
-      } else pushHistory();
+    onImport: (t) => {
+      pushHistory();
       setText(t);
       setSel(null);
       setSelSec(null);
     },
   });
-  const inEdit = doc.mode === 'edit';
 
+  // Quiet autosave so a refresh never loses work.
   useEffect(() => {
-    if (doc.shared) return; // a shared copy isn't saved until it is edited
     try {
       localStorage.setItem(KEY, JSON.stringify({ text }));
     } catch {
       /* ignore */
     }
-  }, [text, doc.shared]);
+  }, [text]);
 
-  const afterEdit = doc.detach;
-  const commit = (g: Gantt) => {
-    afterEdit();
-    setText(serializeGantt(g));
-  };
+  const commit = (g: Gantt) => setText(serializeGantt(g));
   const edit = (fn: (g: Gantt) => Gantt | null, key?: string) => {
     const next = fn(gantt);
     if (!next) return;
@@ -161,7 +151,6 @@ export function GanttPage({ route }: { route: Route }) {
   /* ----- toolbar actions ----- */
   const reset = () => {
     pushHistory();
-    afterEdit();
     setText(STARTER);
     setSel(null);
   };
@@ -334,26 +323,19 @@ export function GanttPage({ route }: { route: Route }) {
 
   /* ----- render ----- */
   return (
-    <div className={`app gantt-page${inEdit ? '' : ' view'}`}>
+    <div className="app">
       <header className="toolbar">
-        {doc.modeToggle}
-        {inEdit && (
-          <>
-            <button onClick={undo} disabled={!past.current.length} title="Ctrl+Z">Undo</button>
-            <button onClick={redo} disabled={!future.current.length} title="Ctrl+Shift+Z">Redo</button>
-            <button onClick={() => setZoom((z) => ZOOMS[Math.max(0, ZOOMS.indexOf(z) - 1)] ?? z)} title="Zoom out">−</button>
-            <button onClick={() => setZoom((z) => ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + 1)] ?? z)} title="Zoom in">+</button>
-          </>
-        )}
+        <button onClick={undo} disabled={!past.current.length} title="Ctrl+Z">Undo</button>
+        <button onClick={redo} disabled={!future.current.length} title="Ctrl+Shift+Z">Redo</button>
+        <button onClick={() => setZoom((z) => ZOOMS[Math.max(0, ZOOMS.indexOf(z) - 1)] ?? z)} title="Zoom out">−</button>
+        <button onClick={() => setZoom((z) => ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + 1)] ?? z)} title="Zoom in">+</button>
         <span className="spacer" />
-        {doc.bar}
-        {inEdit && <button className="danger" onClick={reset}>Reset sample</button>}
+        {io.importMenu}
+        {io.exportMenu}
+        <button className="danger" onClick={reset}>Reset sample</button>
       </header>
 
-      {doc.banners}
-
-      {inEdit && (
-        <aside className="sidebar">
+      <aside className="sidebar">
           <h3>Add</h3>
           <div className="palette">
             <button className="palette-item" onClick={() => { const r = addTask(gantt, sectionOfSel()); pushHistory(); commit(r.gantt); setSel(r.id); setSelSec(null); }}>
@@ -391,16 +373,13 @@ export function GanttPage({ route }: { route: Route }) {
           <h3>Inspector</h3>
           {inspector()}
         </aside>
-      )}
 
       <main className="canvas gantt-main">
-        {inEdit ? (
-          <>
-            <div className="view-head">
+        <div className="view-head">
               <strong>{gantt.title || 'Untitled plan'}</strong>
               <span>{tasks.length} tasks · drag bars to move, drag the right edge to resize, drag the dot onto another bar to link</span>
-            </div>
-            <GanttChart
+        </div>
+        <GanttChart
               gantt={gantt}
               selected={selTask?.id ?? null}
               selectedSection={selSec}
@@ -410,16 +389,9 @@ export function GanttPage({ route }: { route: Route }) {
               onBegin={() => pushHistory()}
               onChange={commit}
               onNotice={flash}
-            />
-          </>
-        ) : (
-          <div className="view-chart">
-            <Preview code={text} theme={theme} onSvg={setSvg} />
-          </div>
-        )}
+        />
       </main>
 
-      {inEdit && (
         <section className="side-right">
           <div className="code-head">
             <h3>Mermaid</h3>
@@ -433,8 +405,7 @@ export function GanttPage({ route }: { route: Route }) {
             aria-label="Mermaid gantt source"
             onChange={(e) => {
               pushHistory('typing');
-              afterEdit();
-              setText(e.target.value);
+                      setText(e.target.value);
             }}
           />
           <p className="hint">Edit the text or the chart; they stay in sync and save in this browser automatically.</p>
@@ -448,13 +419,12 @@ export function GanttPage({ route }: { route: Route }) {
           <h3>Preview</h3>
           <Preview code={text} theme={theme} onSvg={setSvg} />
         </section>
-      )}
 
       <footer className="footer">
         <span>Gantt · v{__APP_VERSION__}</span>
-        {doc.footerNote}
       </footer>
 
+      {io.pasteDialog}
       <Toast notice={toast.notice} onUndo={() => { undo(); toast.clear(); }} />
     </div>
   );

@@ -12,9 +12,7 @@ a.tab:hover { border-color: var(--border); color: var(--text); }
 .tab.on { background: var(--input); color: var(--text); border-color: var(--border); font-weight: 600; }
 .tab.soon { opacity: .55; cursor: default; }
 .shell-page { flex: 1; min-height: 0; }
-.app { position: relative; display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto auto 1fr auto; grid-template-areas: "bar bar bar" "banner banner banner" "side canvas right" "foot foot foot"; }
-.banners { grid-area: banner; }
-.app.view { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "banner" "canvas" "foot"; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.app { position: relative; display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto 1fr auto; grid-template-areas: "bar bar bar" "side canvas right" "foot foot foot"; }
 .toolbar { grid-area: bar; display: flex; gap: 6px 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .brand { margin-right: 8px; }
 .spacer { flex: 1; }
@@ -78,8 +76,7 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 @media (max-width: 900px) {
   .shell-page { overflow: auto; }
   .gantt { grid-template-columns: 140px minmax(0, 1fr); }
-  .app { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto auto 65vh auto auto auto; grid-template-areas: "bar" "banner" "canvas" "side" "right" "foot"; }
-  .app.view { grid-template-areas: "bar" "banner" "canvas" "foot"; grid-template-rows: auto auto auto auto; }
+  .app { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto 65vh auto auto auto; grid-template-areas: "bar" "canvas" "side" "right" "foot"; }
   .sidebar, .side-right { overflow: visible; border: none; border-top: 1px solid var(--border); }
   .palette { grid-template-columns: 1fr 1fr; }
   .react-flow__minimap { display: none; }
@@ -130,13 +127,6 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 
 /* ---- Gantt workspace ---- */
 .gantt-main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
-.view-chart { padding: 14px; overflow: auto; }
-.view-chart .preview { min-height: 320px; }
-.seg { display: inline-flex; }
-.seg button { border-radius: 0; }
-.seg button:first-child { border-radius: 6px 0 0 6px; }
-.seg button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
-.seg button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 .swatch-task { height: 12px; border-radius: 3px; background: var(--accent); border-color: var(--accent); }
 .swatch-ms { background: var(--bar-ms); border-color: var(--bar-ms); transform: rotate(45deg) scale(.6); width: 16px; height: 16px; }
 .view-head { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
@@ -186,7 +176,15 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .checks label { display: inline-flex; flex-direction: row; gap: 5px; align-items: center; color: var(--text); }
 .checks input { width: auto; }
 
-.banner { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 13px; }
-.banner input { flex: 1; min-width: 0; font: 12px ui-monospace, Menlo, Consolas, monospace; }
-.foot-doc { display: inline-flex; gap: 12px; align-items: center; }
-.linklike { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; font-size: 12px; cursor: pointer; }
+
+/* import / export menus and the paste dialog */
+.menu { position: relative; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 210px; display: grid; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / .35); }
+.menu-pop button { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; text-align: left; border: none; background: transparent; padding: 7px 10px; }
+.menu-pop button:hover:not(:disabled) { background: var(--input); }
+.menu-pop small { color: var(--muted); font-size: 11px; }
+.modal { position: fixed; inset: 0; background: rgb(0 0 0 / .5); z-index: 50; display: grid; place-items: center; padding: 14px; }
+.sheet { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: min(720px, 100%); max-height: 100%; overflow: auto; padding: 14px; display: grid; gap: 10px; }
+.sheet h2 { margin: 0; font-size: 16px; }
+.sheet textarea { width: 100%; min-height: 260px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: vertical; white-space: pre; }
+.sheet .actions { display: flex; gap: 8px; justify-content: flex-end; }

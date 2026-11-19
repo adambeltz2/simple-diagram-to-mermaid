@@ -3,15 +3,13 @@ import { useMemo, useSyncExternalStore } from 'react';
 export type Page = 'diagrams' | 'gantt';
 export interface Route {
   page: Page;
-  params: URLSearchParams;
 }
 const LAST = 'sdtm:page';
 
-/** `#/gantt?d=...` -> { page: 'gantt', params }. An empty hash opens the last workspace used. */
+/** `#/gantt` -> gantt. An empty or unknown hash opens the last workspace used, else Diagrams. */
 export function parseHash(hash: string, last?: string | null): Route {
-  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
-  const page: Page = path === 'gantt' ? 'gantt' : path === 'diagrams' ? 'diagrams' : last === 'gantt' && !path ? 'gantt' : 'diagrams';
-  return { page, params: new URLSearchParams(query) };
+  const path = hash.replace(/^#\/?/, '').split('?')[0];
+  return { page: path === 'gantt' ? 'gantt' : path === 'diagrams' ? 'diagrams' : last === 'gantt' && !path ? 'gantt' : 'diagrams' };
 }
 
 const subscribe = (cb: () => void) => {
@@ -36,9 +34,4 @@ export function useRoute(): Route {
     }
     return r;
   }, [hash]);
-}
-
-/** Change the hash without adding a history entry or reloading the workspace. */
-export function replaceHash(hash: string) {
-  history.replaceState(null, '', hash);
 }

@@ -2,30 +2,19 @@
 
 **Live app: https://adambeltz2.github.io/simple-diagram-to-mermaid/**
 
-A drag-and-drop canvas (think draw.io) that is a **two-way editor for Mermaid flowcharts**.
-Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canvas.
+A basic tool to **visually edit Mermaid** and move it in and out of other applications:
+paste or open Mermaid (or Markdown containing it), change it visually, and export it again.
 
-## Features
-## Workspaces
-One app, separate workspaces for separate jobs (switch at the top; each has its own address and saved state):
+## Import and export (same in every tab)
+- **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…* (`.mmd` / `.md`). A Markdown file's other text is remembered.
+- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of the file around it), *Download SVG*.
+- A file or paste meant for the other tab says so and points you there; nothing is lost.
+- **Nothing is silently dropped**: anything the visual editor can't show (frontmatter, `%%{init}%%`, `click`, notes, unknown lines) is kept and written back on export, with a warning listing it.
+- Your work autosaves quietly in the browser, so a refresh doesn't lose it.
 
-- **Diagrams** (`#/diagrams`): flowcharts, state diagrams and ER diagrams on a drag-and-drop canvas (below).
-- **Gantt** (`#/gantt`): project plans. A visual editor and the Mermaid/Markdown text stay in sync, and the chart rerenders as you type, so small changes don't need a push and pull.
-  - **Edit / View**: *View* shows just the rendered chart for readers; *Edit* adds the editor.
-  - **Visual editing**: drag a bar to move it, drag its right edge to resize, drag the dot at a bar's end onto another bar to make that one start after it. Tasks that follow a moved task move with it; dragging a follower detaches it (with an Undo). Add tasks, milestones and sections, set status (done / active / critical / milestone), and edit names, IDs, dates and lengths in the inspector.
-  - **Text editing**: the Mermaid source is editable at any time. Config lines, comments, `click` lines, frontmatter and anything unparseable are kept and written back.
-  - **Limits**: the visual editor needs `dateFormat YYYY-MM-DD` (other formats open as text only); bars show calendar days, so `excludes weekends` is applied by the preview but not by the bars; tasks and sections can't be reordered by dragging yet.
-- **Timeline** is next.
-
-### Saving and sharing (the same in every workspace)
-One shared implementation (`src/doc/`), so every workspace behaves the same, and so will any future one:
-
-- **Autosave** in your browser; each workspace keeps its own working copy.
-- **Edit / View**: *View* shows only the rendered chart.
-- **Share link**: the whole chart goes in the URL (compressed; nothing is stored on a server). Whoever opens it sees it in View mode, and **nothing is saved until they click *Edit a copy***. At that point their own earlier work is set aside, never overwritten, and *Restore my earlier plan* appears in the footer.
-- **Open / download `.mmd` and `.md`**: opening a Markdown file picks the chart this workspace can edit and keeps the rest of the file; *Download .md* writes it back around the chart. A file for another workspace points you to the right tab. **Export SVG** too.
-- A share link only carries the Mermaid text, so a diagram opened from a link gets a fresh automatic layout; use *Save project* (Diagrams) to keep exact node positions.
-- Saving for everyone (for example *Save to GitHub*) is not built yet. It would be added once, in this layer, and appear in every workspace.
+## Tabs
+- **Diagrams**: flowcharts, state diagrams and ER diagrams on a drag-and-drop canvas (below).
+- **Gantt**: project plans with a visual editor: drag a bar to move it, drag its right edge to resize, drag the dot at a bar's end onto another bar to make that one start after it. Tasks that follow a moved task move with it; dragging a follower detaches it (with an Undo). The Mermaid text stays in sync and rerenders as you type. *Limits*: the visual editor needs `dateFormat YYYY-MM-DD` (other formats open as text only); bars show calendar days, so `excludes weekends` is applied by the preview but not by the bars; tasks and sections can't be reordered by dragging yet.
 
 ## Diagrams features
 - **Three diagram types**: flowcharts, **state diagrams** and **ER diagrams** (`erDiagram`)
@@ -40,11 +29,10 @@ One shared implementation (`src/doc/`), so every workspace behaves the same, and
 - **Nothing is silently dropped**: YAML frontmatter, `%%{init}%%` directives, `click`, `accTitle` and any line the canvas can't show are kept verbatim and written back on export (you get a warning listing them)
 - Direction toggle (TD / LR / BT / RL) and one-click auto layout
 - Live Mermaid code + live rendered preview
-- **Import**: edit the code box and click *Apply to canvas*, or use *Open .md / .mmd*
-- **Export**: see *Saving and sharing* above; *Save project* / *Open project* additionally keep canvas positions (`.json`)
+- Edit the code box and click *Apply to canvas* to change the diagram from text
+- *Save project* / *Open project* keep exact node positions as a `.json` (Mermaid text itself has no positions)
 - Dark / light mode toggle (follows your system by default, remembers your choice)
 - Undo / redo (Ctrl+Z, Ctrl+Shift+Z)
-- Autosaves to localStorage
 
 ## How it works
 The source of truth is a graph model (`src/mermaid/types.ts`). The canvas edits it,
