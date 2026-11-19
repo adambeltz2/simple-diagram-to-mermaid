@@ -6,6 +6,19 @@ A drag-and-drop canvas (think draw.io) that is a **two-way editor for Mermaid fl
 Draw visually and get Mermaid code, or paste/edit Mermaid and see it on the canvas.
 
 ## Features
+## Workspaces
+One app, separate workspaces for separate jobs (switch at the top; each has its own address and saved state):
+
+- **Diagrams** (`#/diagrams`): flowcharts, state diagrams and ER diagrams on a drag-and-drop canvas (below).
+- **Gantt** (`#/gantt`): project plans. A visual editor and the Mermaid/Markdown text stay in sync, and the chart rerenders as you type, so small changes don't need a push and pull.
+  - **Edit / View**: *View* shows just the rendered chart for readers; *Edit* adds the editor.
+  - **Visual editing**: drag a bar to move it, drag its right edge to resize, drag the dot at a bar's end onto another bar to make that one start after it. Tasks that follow a moved task move with it; dragging a follower detaches it (with an Undo). Add tasks, milestones and sections, set status (done / active / critical / milestone), and edit names, IDs, dates and lengths in the inspector.
+  - **Text editing**: the Mermaid source is editable at any time. Config lines, comments, `click` lines, frontmatter and anything unparseable are kept and written back.
+  - **Saving and sharing**: autosaves in your browser. **Share link** puts the whole plan in the URL (nothing is stored on a server); whoever opens it sees the chart in View mode, and their edits stay in their own browser. **Download .mmd / .md / SVG**, or **Open .md / .mmd**: when you open a Markdown file, the surrounding text is kept and written back around the chart on *Download .md*.
+  - **Limits**: the visual editor needs `dateFormat YYYY-MM-DD` (other formats open as text only); bars show calendar days, so `excludes weekends` is applied by the preview but not by the bars; tasks and sections can't be reordered by dragging yet.
+- **Timeline** is next.
+
+## Diagrams features
 - **Three diagram types**: flowcharts, **state diagrams** and **ER diagrams** (`erDiagram`)
 - **ER diagrams**: entity tables with editable attributes (type, name, `PK`/`FK`/`UK`, comment), aliases, hyphenated and quoted names, and relationships with crow's-foot cardinality (one / zero-or-one / zero-or-more / one-or-more on each end) and identifying (solid) or non-identifying (dotted) lines. Paste any `erDiagram` and it opens as an ER diagram. Attribute lines the canvas can't parse are kept as text
 - **State diagrams** (`stateDiagram-v2`), switched from the toolbar. State diagrams support states, start/end markers (per composite scope), choice and fork/join nodes, composite states (nested, with their own direction), and `classDef`/`class`. Paste any `stateDiagram-v2` text and it opens as a state diagram. Converting between types maps node kinds sensibly (and drops styling the other type can't express)

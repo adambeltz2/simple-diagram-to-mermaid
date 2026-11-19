@@ -18,6 +18,7 @@ import { GroupNode } from './canvas/GroupNode';
 import { StyleContext } from './canvas/StyleContext';
 import { reparent, ungroup, wrapInGroup } from './canvas/grouping';
 import { ShapeNode } from './canvas/ShapeNode';
+import { useTheme } from './theme';
 import { Preview } from './Preview';
 import {
   ER_MARKER,
@@ -57,19 +58,6 @@ import {
 
 const nodeTypes = { shape: ShapeNode, group: GroupNode };
 const STORAGE_KEY = 'sdtm:graph:v1';
-const THEME_KEY = 'sdtm:theme';
-type Theme = 'dark' | 'light';
-
-function initialTheme(): Theme {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'dark' || saved === 'light') return saved;
-  } catch {
-    /* ignore */
-  }
-  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
 const STARTER: Graph = autoLayout({
   direction: 'TD',
   groups: [],
@@ -118,15 +106,7 @@ function Editor() {
   const [meta, setMeta] = useState<GraphMeta>(() => metaOf(initial.g));
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(initial.edges);
-  const [theme, setTheme] = useState<Theme>(initialTheme);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* ignore */
-    }
-  }, [theme]);
+  const theme = useTheme();
   // Inline label editor shown on double-clicking an edge.
   const [edgeEdit, setEdgeEdit] = useState<{ id: string; x: number; y: number; value: string } | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -461,7 +441,6 @@ function Editor() {
   return (
     <div className="app">
       <header className="toolbar">
-        <strong className="brand">Diagram → Mermaid</strong>
         <label>
           Diagram{' '}
           <select
@@ -497,13 +476,6 @@ function Editor() {
           Redo
         </button>
         <span className="spacer" />
-        <button
-          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-          title="Toggle dark / light mode"
-          aria-pressed={theme === 'dark'}
-        >
-          {theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode'}
-        </button>
         <button onClick={() => fileInput.current?.click()}>Import .mmd</button>
         <button onClick={() => projectInput.current?.click()}>Open project</button>
         <button onClick={() => download('diagram.mmd', generated, 'text/plain')}>Export .mmd</button>
