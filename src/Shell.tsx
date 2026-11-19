@@ -24,7 +24,7 @@ export function Shell() {
           {theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode'}
         </button>
       </nav>
-      <div className="shell-page">{route.page === 'gantt' ? <GanttPage route={route} /> : <DiagramsPage />}</div>
+      <div className="shell-page">{route.page === 'gantt' ? <GanttPage route={route} /> : <DiagramsPage route={route} />}</div>
     </div>
   );
 }

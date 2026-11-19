@@ -12,7 +12,9 @@ a.tab:hover { border-color: var(--border); color: var(--text); }
 .tab.on { background: var(--input); color: var(--text); border-color: var(--border); font-weight: 600; }
 .tab.soon { opacity: .55; cursor: default; }
 .shell-page { flex: 1; min-height: 0; }
-.app { position: relative; display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto 1fr auto; grid-template-areas: "bar bar bar" "side canvas right" "foot foot foot"; }
+.app { position: relative; display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto auto 1fr auto; grid-template-areas: "bar bar bar" "banner banner banner" "side canvas right" "foot foot foot"; }
+.banners { grid-area: banner; }
+.app.view { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "banner" "canvas" "foot"; grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .toolbar { grid-area: bar; display: flex; gap: 6px 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .brand { margin-right: 8px; }
 .spacer { flex: 1; }
@@ -75,9 +77,9 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .group-label input { width: 70%; padding: 2px 6px; }
 @media (max-width: 900px) {
   .shell-page { overflow: auto; }
-  .gantt-page { grid-template-rows: auto auto 65vh auto auto auto; grid-template-areas: "bar" "banner" "canvas" "side" "right" "foot"; }
   .gantt { grid-template-columns: 140px minmax(0, 1fr); }
-  .app { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto 65vh auto auto auto; grid-template-areas: "bar" "canvas" "side" "right" "foot"; }
+  .app { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto auto 65vh auto auto auto; grid-template-areas: "bar" "banner" "canvas" "side" "right" "foot"; }
+  .app.view { grid-template-areas: "bar" "banner" "canvas" "foot"; grid-template-rows: auto auto auto auto; }
   .sidebar, .side-right { overflow: visible; border: none; border-top: 1px solid var(--border); }
   .palette { grid-template-columns: 1fr 1fr; }
   .react-flow__minimap { display: none; }
@@ -127,12 +129,6 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .attr-raw { font-size: 11px; color: var(--muted); word-break: break-all; }
 
 /* ---- Gantt workspace ---- */
-.gantt-page { grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "bar bar bar" "banner banner banner" "side canvas right" "foot foot foot"; }
-.banners { grid-area: banner; }
-.gantt-page .banner { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 13px; }
-.gantt-page .banner input { flex: 1; min-width: 0; font: 12px var(--mono, ui-monospace, monospace); }
-.gantt-page.view { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "banner" "canvas" "foot"; }
-.gantt-page .sidebar { grid-area: side; }
 .gantt-main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
 .view-chart { padding: 14px; overflow: auto; }
 .view-chart .preview { min-height: 320px; }
@@ -189,3 +185,8 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
 .checks label { display: inline-flex; flex-direction: row; gap: 5px; align-items: center; color: var(--text); }
 .checks input { width: auto; }
+
+.banner { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 13px; }
+.banner input { flex: 1; min-width: 0; font: 12px ui-monospace, Menlo, Consolas, monospace; }
+.foot-doc { display: inline-flex; gap: 12px; align-items: center; }
+.linklike { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; font-size: 12px; cursor: pointer; }

@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Preview } from '../Preview';
-import { replaceHash, type Route } from '../router';
+import { isGanttText } from '../doc/markdown';
+import { Toast, useToast } from '../doc/useToast';
+import { useDocSync } from '../doc/useDocSync';
+import { type Route } from '../router';
 import { useTheme } from '../theme';
 import { GanttChart } from './GanttChart';
 import {
   addTask, allTasks, deleteTask, findTask, fromDay, parseGantt, renameTaskId, resizeTask, schedule,
   serializeGantt, updateTask, dependsOn, type Gantt,
 } from './model';
-import { decodeShare, encodeShare } from './share';
 
 const KEY = 'sdtm:gantt:v1';
-interface Wrap {
-  before: string;
-  after: string;
-}
-const NO_WRAP: Wrap = { before: '', after: '' };
 const ZOOMS = [5, 7, 9, 12, 16, 22, 30];
 
 const STARTER = `gantt
@@ -34,39 +31,17 @@ const STARTER = `gantt
     Go live :milestone, live, after qa, 0d
 `;
 
-function load(): { text: string; wrap: Wrap } {
+function load(): string {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const j = JSON.parse(raw);
-      if (typeof j.text === 'string') return { text: j.text, wrap: { ...NO_WRAP, ...j.wrap } };
+      if (typeof j.text === 'string') return j.text;
     }
   } catch {
     /* ignore */
   }
-  return { text: STARTER, wrap: NO_WRAP };
-}
-
-/** Find the ```mermaid block holding a gantt chart in a Markdown file. */
-export function splitMarkdown(src: string): { text: string; wrap: Wrap } | null {
-  const re = /```mermaid[^\n]*\n([\s\S]*?)```/g;
-  for (let m = re.exec(src); m; m = re.exec(src)) {
-    if (/(^|\n)\s*gantt\s*(\n|$)/.test(m[1])) {
-      return { text: m[1], wrap: { before: src.slice(0, m.index), after: src.slice(m.index + m[0].length) } };
-    }
-  }
-  return /(^|\n)\s*gantt\s*(\n|$)/.test(src) && !src.includes('```') ? { text: src, wrap: NO_WRAP } : null;
-}
-
-export const toMarkdown = (text: string, w: Wrap) => `${w.before}\`\`\`mermaid\n${text.replace(/\s*$/, '\n')}\`\`\`${w.after || '\n'}`;
-
-function download(name: string, content: string, type: string) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+  return STARTER;
 }
 
 const AXIS = [
@@ -76,30 +51,19 @@ const AXIS = [
 export function GanttPage({ route }: { route: Route }) {
   const theme = useTheme();
   const init = useMemo(load, []);
-  const [text, setText] = useState(init.text);
-  const [wrap, setWrap] = useState<Wrap>(init.wrap);
-  const [mode, setMode] = useState<'edit' | 'view'>('edit');
+  const [text, setText] = useState(init);
   const [sel, setSel] = useState<string | null>(null);
   const [selSec, setSelSec] = useState<number | null>(null);
   const [zoom, setZoom] = useState(12);
-  const [notice, setNotice] = useState<{ msg: string; undo?: boolean } | null>(null);
-  const [shared, setShared] = useState(false);
-  const [shareUrl, setShareUrl] = useState('');
   const [svg, setSvg] = useState('');
-  const fileInput = useRef<HTMLInputElement>(null);
-  const noticeTimer = useRef<number>(0);
+  const toast = useToast();
+  const flash = toast.flash;
 
   const parsed = useMemo(() => parseGantt(text), [text]);
   const gantt = parsed.gantt;
   const tasks = useMemo(() => allTasks(gantt), [gantt]);
   const sc = useMemo(() => schedule(gantt), [gantt]);
   const selTask = sel ? findTask(gantt, sel) ?? null : null;
-
-  const flash = (msg: string, undo = false) => {
-    setNotice({ msg, undo });
-    window.clearTimeout(noticeTimer.current);
-    noticeTimer.current = window.setTimeout(() => setNotice(null), 5000);
-  };
 
   /* ----- history (text snapshots) ----- */
   const past = useRef<string[]>([]);
@@ -152,42 +116,37 @@ export function GanttPage({ route }: { route: Route }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  /* ----- persistence and share links ----- */
+  /* ----- save / sync: the same rules in every workspace ----- */
+  const doc = useDocSync({
+    page: 'gantt',
+    route,
+    text,
+    svg,
+    fileBase: 'plan',
+    isMine: isGanttText,
+    flash,
+    onLoad: (t, source) => {
+      if (source === 'link') {
+        past.current = [];
+        future.current = [];
+      } else pushHistory();
+      setText(t);
+      setSel(null);
+      setSelSec(null);
+    },
+  });
+  const inEdit = doc.mode === 'edit';
+
   useEffect(() => {
-    if (shared) return; // a shared copy isn't saved until it is edited
+    if (doc.shared) return; // a shared copy isn't saved until it is edited
     try {
-      localStorage.setItem(KEY, JSON.stringify({ text, wrap }));
+      localStorage.setItem(KEY, JSON.stringify({ text }));
     } catch {
       /* ignore */
     }
-  }, [text, wrap, shared]);
+  }, [text, doc.shared]);
 
-  const d = route.params.get('d');
-  useEffect(() => {
-    if (!d) return;
-    let live = true;
-    decodeShare(d).then((t) => {
-      if (!live) return;
-      if (t === null) return flash('That share link looks damaged, so it was not opened.');
-      past.current = [];
-      future.current = [];
-      setText(t);
-      setWrap(NO_WRAP);
-      setMode('view');
-      setShared(true);
-      setSel(null);
-    });
-    return () => {
-      live = false;
-    };
-  }, [d]);
-
-  const afterEdit = () => {
-    if (shared) {
-      setShared(false);
-      replaceHash('#/gantt');
-    }
-  };
+  const afterEdit = doc.detach;
   const commit = (g: Gantt) => {
     afterEdit();
     setText(serializeGantt(g));
@@ -200,37 +159,10 @@ export function GanttPage({ route }: { route: Route }) {
   };
 
   /* ----- toolbar actions ----- */
-  const share = async () => {
-    const enc = await encodeShare(text);
-    const url = `${location.origin}${location.pathname}#/gantt?d=${enc}`;
-    setShareUrl(url);
-    try {
-      await navigator.clipboard.writeText(url);
-      flash('Link copied. Whoever opens it sees this chart; their edits stay in their own browser.');
-    } catch {
-      /* the link box below is selectable */
-    }
-  };
-  const openFile = (f: File) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const src = String(r.result);
-      const found = splitMarkdown(src);
-      if (!found) return flash('No gantt chart found in that file.');
-      pushHistory();
-      afterEdit();
-      setText(found.text);
-      setWrap(found.wrap);
-      setSel(null);
-      flash(found.wrap.before || found.wrap.after ? 'Opened the gantt chart. The rest of the Markdown file is kept for download.' : 'Opened.');
-    };
-    r.readAsText(f);
-  };
   const reset = () => {
     pushHistory();
     afterEdit();
     setText(STARTER);
-    setWrap(NO_WRAP);
     setSel(null);
   };
 
@@ -239,8 +171,6 @@ export function GanttPage({ route }: { route: Route }) {
     return s ? Math.max(1, Math.round(s.end - s.start)) : 1;
   };
   const err = parsed.warnings;
-  const inEdit = mode === 'edit';
-
   /* ----- inspector ----- */
   const inspector = () => {
     if (selTask) {
@@ -406,10 +336,7 @@ export function GanttPage({ route }: { route: Route }) {
   return (
     <div className={`app gantt-page${inEdit ? '' : ' view'}`}>
       <header className="toolbar">
-        <div className="seg" role="group" aria-label="Mode">
-          <button className={inEdit ? 'on' : ''} onClick={() => setMode('edit')}>Edit</button>
-          <button className={!inEdit ? 'on' : ''} onClick={() => setMode('view')}>View</button>
-        </div>
+        {doc.modeToggle}
         {inEdit && (
           <>
             <button onClick={undo} disabled={!past.current.length} title="Ctrl+Z">Undo</button>
@@ -419,39 +346,11 @@ export function GanttPage({ route }: { route: Route }) {
           </>
         )}
         <span className="spacer" />
-        <button onClick={share}>Share link</button>
-        <button onClick={() => fileInput.current?.click()}>Open .md / .mmd</button>
-        <button onClick={() => download('plan.mmd', text, 'text/plain')}>Download .mmd</button>
-        <button onClick={() => download('plan.md', toMarkdown(text, wrap), 'text/markdown')}>Download .md</button>
-        <button disabled={!svg} onClick={() => download('plan.svg', svg, 'image/svg+xml')}>Export SVG</button>
+        {doc.bar}
         {inEdit && <button className="danger" onClick={reset}>Reset sample</button>}
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".md,.mmd,.txt,.markdown"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) openFile(f);
-            e.target.value = '';
-          }}
-        />
       </header>
 
-      <div className="banners">
-      {shared && (
-        <div className="banner">
-          You're viewing a shared plan. Click <b>Edit</b> to change it; your changes are saved in this browser only.
-        </div>
-      )}
-      {shareUrl && (
-        <div className="banner share">
-          <input readOnly value={shareUrl} aria-label="Share link" onFocus={(e) => e.target.select()} />
-          <button onClick={() => navigator.clipboard?.writeText(shareUrl).then(() => flash('Link copied.'), () => undefined)}>Copy</button>
-          <button onClick={() => setShareUrl('')}>Close</button>
-        </div>
-      )}
-      </div>
+      {doc.banners}
 
       {inEdit && (
         <aside className="sidebar">
@@ -553,17 +452,10 @@ export function GanttPage({ route }: { route: Route }) {
 
       <footer className="footer">
         <span>Gantt · v{__APP_VERSION__}</span>
-        <span>{wrap.before || wrap.after ? 'Markdown file: surrounding text is kept on “Download .md”' : 'Saved in this browser'}</span>
+        {doc.footerNote}
       </footer>
 
-      {notice && (
-        <div className="toast" role="status">
-          <span>{notice.msg}</span>
-          {notice.undo && (
-            <button onClick={() => { undo(); setNotice(null); }}>Undo</button>
-          )}
-        </div>
-      )}
+      <Toast notice={toast.notice} onUndo={() => { undo(); toast.clear(); }} />
     </div>
   );
 }

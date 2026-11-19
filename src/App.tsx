@@ -19,6 +19,11 @@ import { StyleContext } from './canvas/StyleContext';
 import { reparent, ungroup, wrapInGroup } from './canvas/grouping';
 import { ShapeNode } from './canvas/ShapeNode';
 import { useTheme } from './theme';
+import { download } from './doc/files';
+import { isCanvasText } from './doc/markdown';
+import { Toast, useToast } from './doc/useToast';
+import { useDocSync } from './doc/useDocSync';
+import type { Route } from './router';
 import { Preview } from './Preview';
 import {
   ER_MARKER,
@@ -88,16 +93,7 @@ function loadInitial(): Graph {
 
 const EMPTY_DEFS: Record<string, Css> = {};
 
-function download(name: string, content: string, type: string) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function Editor() {
+function Editor({ route }: { route: Route }) {
   const initial = useMemo(() => {
     const g = loadInitial();
     return { g, ...graphToFlow(g, true) };
@@ -114,7 +110,6 @@ function Editor() {
   const [svg, setSvg] = useState('');
   const { screenToFlowPosition, fitView } = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
   // ---- undo / redo --------------------------------------------------------
@@ -211,14 +206,6 @@ function Editor() {
   const isEr = meta.diagram === 'er';
   const paletteShapes = isState ? STATE_SHAPES : isEr ? ER_SHAPES : SHAPES;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(graph));
-    } catch {
-      /* ignore */
-    }
-  }, [graph]);
-
   const load = useCallback(
     (g: Graph, resetHandles = true) => {
       const f = graphToFlow(g, resetHandles);
@@ -249,6 +236,37 @@ function Editor() {
     setWarnings(w);
     setDraft(null);
   };
+
+  /** Replace the whole diagram from Mermaid text (file or share link): fresh layout, no position merging. */
+  const loadText = (text: string) => {
+    const { graph: parsed, warnings: w } = parseDiagram(text);
+    load(fitGroups(autoLayout(parsed)), true);
+    setWarnings(w);
+    setDraft(null);
+  };
+
+  // ---- save / sync: the same rules in every workspace ---------------------
+  const toast = useToast();
+  const doc = useDocSync({
+    page: 'diagrams',
+    route,
+    text: generated,
+    svg,
+    fileBase: 'diagram',
+    isMine: isCanvasText,
+    flash: toast.flash,
+    onLoad: (t) => loadText(t),
+  });
+  const inEdit = doc.mode === 'edit';
+
+  useEffect(() => {
+    if (doc.shared) return; // a shared copy isn't saved until it is edited
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(graph));
+    } catch {
+      /* ignore */
+    }
+  }, [graph, doc.shared]);
 
   // ---- canvas actions -----------------------------------------------------
   const addNode = useCallback(
@@ -416,13 +434,6 @@ function Editor() {
     r.readAsText(file);
   };
 
-  const importMermaidFile = (file: File) =>
-    readFile(file, (text) => {
-      // Accept a ```mermaid fenced block inside a markdown file too.
-      const fenced = /```mermaid\s*\n([\s\S]*?)```/.exec(text);
-      applyText(fenced ? fenced[1] : text);
-    });
-
   const importProject = (file: File) =>
     readFile(file, (text) => {
       try {
@@ -439,8 +450,11 @@ function Editor() {
   const code = draft ?? generated;
 
   return (
-    <div className="app">
+    <div className={`app${inEdit ? '' : ' view'}`}>
       <header className="toolbar">
+        {doc.modeToggle}
+        {inEdit && (
+          <>
         <label>
           Diagram{' '}
           <select
@@ -475,14 +489,14 @@ function Editor() {
         <button onClick={redo} disabled={future.current.length === 0} title="Ctrl+Shift+Z">
           Redo
         </button>
+          </>
+        )}
         <span className="spacer" />
-        <button onClick={() => fileInput.current?.click()}>Import .mmd</button>
-        <button onClick={() => projectInput.current?.click()}>Open project</button>
-        <button onClick={() => download('diagram.mmd', generated, 'text/plain')}>Export .mmd</button>
-        <button disabled={!svg} onClick={() => download('diagram.svg', svg, 'image/svg+xml')}>
-          Export SVG
-        </button>
-        <button onClick={() => download('diagram.project.json', JSON.stringify(graph, null, 2), 'application/json')}>
+        {doc.bar}
+        {inEdit && (
+          <>
+        <button onClick={() => projectInput.current?.click()} title="Open a project file that keeps node positions">Open project</button>
+        <button onClick={() => download('diagram.project.json', JSON.stringify(graph, null, 2), 'application/json')} title="Save a project file that keeps node positions">
           Save project
         </button>
         <button
@@ -499,17 +513,8 @@ function Editor() {
         >
           Clear
         </button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".mmd,.mermaid,.md,.txt"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) importMermaidFile(f);
-            e.target.value = '';
-          }}
-        />
+          </>
+        )}
         <input
           ref={projectInput}
           type="file"
@@ -523,6 +528,9 @@ function Editor() {
         />
       </header>
 
+      {doc.banners}
+
+      {inEdit && (
       <aside className="sidebar">
         <h3>Shapes</h3>
         <p className="hint">Drag onto the canvas, or click to add.</p>
@@ -768,7 +776,15 @@ function Editor() {
           </p>
         )}
       </aside>
+      )}
 
+      {!inEdit && (
+        <main className="canvas view-chart">
+          <Preview code={generated} theme={theme} onSvg={setSvg} />
+        </main>
+      )}
+
+      {inEdit && (
       <main
         className="canvas"
         ref={wrapper}
@@ -854,14 +870,17 @@ function Editor() {
           />
         )}
       </main>
+      )}
 
       <footer className="footer">
-        <span>Diagram → Mermaid v{__APP_VERSION__}</span>
+        <span>Diagrams · v{__APP_VERSION__}</span>
+        {doc.footerNote}
         <a href="https://github.com/adambeltz2/simple-diagram-to-mermaid" target="_blank" rel="noreferrer">
           GitHub
         </a>
       </footer>
 
+      {inEdit && (
       <section className="side-right">
         <div className="code-head">
           <h3>Mermaid</h3>
@@ -896,14 +915,17 @@ function Editor() {
         <h3>Preview</h3>
         <Preview code={code} theme={theme} onSvg={setSvg} />
       </section>
+      )}
+
+      <Toast notice={toast.notice} />
     </div>
   );
 }
 
-export function App() {
+export function App({ route }: { route: Route }) {
   return (
     <ReactFlowProvider>
-      <Editor />
+      <Editor route={route} />
     </ReactFlowProvider>
   );
 }

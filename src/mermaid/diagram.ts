@@ -4,16 +4,21 @@ import { parseEr, toEr } from './er';
 import { parseState, toState } from './state';
 import type { DiagramKind, Graph } from './types';
 
-/** Look at the first real line (after frontmatter, directives and comments). */
-export function detectDiagram(text: string): DiagramKind {
+/** The first real line of a Mermaid document (after frontmatter, directives and comments). */
+export function firstDiagramLine(text: string): string {
   const { text: body } = extractFrontmatter(text);
   const d = directiveCollector();
   for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim();
     if (d.feed(line) || !line || line.startsWith('%%')) continue;
-    return /^stateDiagram/i.test(line) ? 'state' : /^erDiagram/i.test(line) ? 'er' : 'flowchart';
+    return line;
   }
-  return 'flowchart';
+  return '';
+}
+
+export function detectDiagram(text: string): DiagramKind {
+  const line = firstDiagramLine(text);
+  return /^stateDiagram/i.test(line) ? 'state' : /^erDiagram/i.test(line) ? 'er' : 'flowchart';
 }
 
 export function parseDiagram(text: string): ParseResult {
