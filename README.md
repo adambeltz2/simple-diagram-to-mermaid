@@ -55,7 +55,8 @@ Unsupported lines are reported as warnings on import.
 ```
 npm install
 npm run dev      # local dev server
-npm test         # converter unit tests
+npm test         # unit tests (converters, parsers, import/export logic)
+npm run e2e      # end-to-end tests in a real browser (needs `npx playwright install chromium` once)
 npm run build
 ```
 

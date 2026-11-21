@@ -8,5 +8,5 @@ export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   build: { chunkSizeWarningLimit: 2500 },
-  test: { environment: 'node' },
+  test: { environment: 'node', include: ['src/**/*.test.{ts,tsx}'] },
 });
