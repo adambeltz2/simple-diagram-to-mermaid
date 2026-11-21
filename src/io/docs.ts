@@ -33,7 +33,8 @@ export function makeDoc<T>(docs: { name: string }[], name: string, data: T, wrap
   return { id: uid(), name: uniqueName(docs, name), updated: Date.now(), data, ...(wrap && (wrap.before || wrap.after) ? { wrap } : {}) };
 }
 
-export function loadStore<T>(page: Page, legacy: () => T | null, sample: () => T, firstName: string): DocStore<T> {
+/** The saved store for a tab, or null if there is none (or it is damaged). */
+export function readStore<T>(page: Page): DocStore<T> | null {
   try {
     const raw = localStorage.getItem(key(page));
     if (raw) {
@@ -41,8 +42,14 @@ export function loadStore<T>(page: Page, legacy: () => T | null, sample: () => T
       if (Array.isArray(s.docs) && s.docs.length && s.docs.some((d) => d.id === s.activeId)) return s;
     }
   } catch {
-    /* fall through to a fresh store */
+    /* treated as missing */
   }
+  return null;
+}
+
+export function loadStore<T>(page: Page, legacy: () => T | null, sample: () => T, firstName: string): DocStore<T> {
+  const existing = readStore<T>(page);
+  if (existing) return existing;
   // First run with documents: carry over whatever the old single-document autosave held.
   const first = makeDoc([], firstName, legacy() ?? sample());
   return { activeId: first.id, docs: [first] };

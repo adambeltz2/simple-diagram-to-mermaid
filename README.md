@@ -15,12 +15,13 @@ Each tab keeps a list of documents (the **Document** picker, top left). Anything
 - Undo / redo belong to the document you're in. Everything autosaves quietly in the browser.
 
 ## Import and export (same in every tab)
-- **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…*. A file or paste meant for the other tab says so and points you there.
+- **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…*. Import works from any tab: a flowchart, state, ER or Gantt chart opens in its visual tab, and every other chart type opens in the **Text** tab, each as a new document there. The tab you were in is left alone. A file or paste meant for the other tab says so and points you there.
 - **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG*, *Download PNG* (2× size, with the background you see in the preview; switch to Light mode first for a white one).
 - **Nothing is silently dropped**: anything the visual editor can't show (frontmatter, `%%{init}%%`, `click`, notes, unknown lines) is kept and written back on export, with a warning listing it.
 
 ## Tabs
 - **Diagrams**: flowcharts, state diagrams and ER diagrams on a drag-and-drop canvas (below).
+- **Text**: any other Mermaid chart (sequence, class, pie, mind map, git graph, and so on) as editable text with a live preview, so every chart can still come in and go out even without a visual editor. If a chart you type here has a visual editor, an **Open in the visual editor** button hands it over.
 - **Gantt**: project plans with a visual editor: drag a bar to move it, drag its right edge to resize, drag the dot at a bar's end onto another bar to make that one start after it. Tasks that follow a moved task move with it; dragging a follower detaches it (with an Undo). The Mermaid text stays in sync and rerenders as you type. *Limits*: the visual editor needs `dateFormat YYYY-MM-DD` (other formats open as text only); bars show calendar days, so `excludes weekends` is applied by the preview but not by the bars; tasks and sections can't be reordered by dragging yet.
 
 ## Diagrams features

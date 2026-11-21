@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessWorkspace, isCanvasText, isGanttText, NO_WRAP, splitMarkdown, toMarkdown } from './markdown';
+import { classifyImport, describeChart, guessWorkspace, isCanvasText, isGanttText, isTextOnly, NO_WRAP, splitMarkdown, toMarkdown } from './markdown';
 
 const DOC = `# Plan
 
@@ -59,5 +59,44 @@ describe('splitMarkdown / toMarkdown', () => {
   });
   it('wraps a bare chart in a fence when downloading as Markdown', () => {
     expect(toMarkdown('gantt\n  A :a, 2026-01-01, 1d', NO_WRAP)).toBe('```mermaid\ngantt\n  A :a, 2026-01-01, 1d\n```\n');
+  });
+});
+
+describe('classifyImport', () => {
+  it('sends gantt and canvas diagrams to their visual tabs, everything else to Text', () => {
+    expect(classifyImport('gantt\n  dateFormat YYYY-MM-DD\n')?.page).toBe('gantt');
+    expect(classifyImport('flowchart TD\nA-->B')?.page).toBe('diagrams');
+    expect(classifyImport('sequenceDiagram\nA->>B: hi')?.page).toBe('text');
+    expect(classifyImport('pie title X\n"a": 1')?.page).toBe('text');
+    expect(classifyImport('xychart-beta\n  x-axis [a,b]')?.page).toBe('text');
+  });
+  it('prefers a visual chart in a Markdown file, and keeps the surrounding text', () => {
+    const doc = '# T\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```\n\nmid\n\n```mermaid\nflowchart LR\nA-->B\n```\n\nend\n';
+    const got = classifyImport(doc)!;
+    expect(got.page).toBe('diagrams');
+    expect(got.text.startsWith('flowchart')).toBe(true);
+    expect(got.wrap.before).toContain('sequenceDiagram');
+    expect(got.wrap.after).toBe('\n\nend\n');
+    expect(classifyImport('```mermaid\nclassDiagram\nA <|-- B\n```')?.page).toBe('text');
+  });
+  it('accepts any fenced mermaid block, but unfenced text must start with a known chart type', () => {
+    expect(classifyImport('```mermaid\nsomeFutureChart\n```')?.page).toBe('text');
+    expect(classifyImport('just some prose about charts')).toBeNull();
+    expect(classifyImport('')).toBeNull();
+    expect(classifyImport('```js\nconsole.log(1)\n```')).toBeNull();
+  });
+});
+
+describe('Text tab helpers', () => {
+  it('isTextOnly excludes only the charts with a visual editor', () => {
+    expect(isTextOnly('sequenceDiagram\n')).toBe(true);
+    expect(isTextOnly('gantt\n')).toBe(false);
+    expect(isTextOnly('erDiagram\n')).toBe(false);
+  });
+  it('names chart types', () => {
+    expect(describeChart('%%{init: {}}%%\nsequenceDiagram\nA->>B: x')).toBe('Sequence diagram');
+    expect(describeChart('pie\n')).toBe('Pie chart');
+    expect(describeChart('somethingNew\n')).toBe('Mermaid');
+    expect(describeChart('  \n')).toBe('Empty');
   });
 });

@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../router';
 import { download } from './files';
-import { guessWorkspace, NO_WRAP, splitMarkdown, toMarkdown, type Wrap } from './markdown';
+import { classifyImport, describeChart, NO_WRAP, splitMarkdown, toMarkdown, type Wrap } from './markdown';
 import { Menu } from './Menu';
 import { useTheme } from '../theme';
 import { renderLabelSafeSvg, svgToPng } from './png';
+import { routeImport, takeNotice } from './route';
 
 /**
  * Getting Mermaid in and out, the same in every tab.
@@ -35,19 +36,30 @@ export function useImportExport(o: ImportExportOptions) {
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
-  const thing = page === 'gantt' ? 'plan' : 'diagram';
+  const thing = page === 'gantt' ? 'plan' : page === 'text' ? 'chart' : 'diagram';
+
+  // Arriving from another tab that handed us an import: say so.
+  useEffect(() => {
+    const m = takeNotice();
+    if (m) o.flash(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Make a new document from a file or pasted text (plain, or inside a ```mermaid fence). */
   const importSource = (src: string, name: string): boolean => {
     const found = splitMarkdown(src, o.isMine);
     if (!found) {
-      const other = guessWorkspace(src);
-      o.flash(
-        other && other !== page
-          ? `That holds ${other === 'gantt' ? 'a Gantt chart' : 'a diagram'}. Import it from the ${other === 'gantt' ? 'Gantt' : 'Diagrams'} tab.`
-          : `No ${thing} this tab can open was found in that text.`,
-      );
-      return false;
+      // Not something this tab edits: hand it to the tab that does (Text takes every other chart), as a new document there.
+      const routed = classifyImport(src);
+      if (!routed || routed.page === page) {
+        o.flash('No Mermaid chart was found in that text.');
+        return false;
+      }
+      const tab = { diagrams: 'Diagrams', gantt: 'Gantt', text: 'Text' }[routed.page];
+      const what = { diagrams: 'diagram', gantt: 'plan', text: 'chart' }[routed.page];
+      const label = name === o.pasteName ? `Pasted ${describeChart(routed.text).toLowerCase()}` : name;
+      routeImport(routed.page, label, routed.text, routed.wrap, `Opened as a new ${what} in the ${tab} tab, since that's where this kind of chart is edited. Your other ${thing}s are untouched.`);
+      return true;
     }
     const made = o.onImport(found.text, name, found.wrap);
     o.flash(`Opened as a new ${thing}, “${made}”. Your other ${thing}s are untouched.`);
