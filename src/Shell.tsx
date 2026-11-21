@@ -18,7 +18,6 @@ export function Shell() {
         <a className={tab('gantt')} href="#/gantt" aria-current={route.page === 'gantt' ? 'page' : undefined}>
           Gantt <small>plans</small>
         </a>
-        <span className="tab soon" title="Coming next">Timeline <small>soon</small></span>
         <span className="spacer" />
         <button onClick={toggleTheme} title="Toggle dark / light mode" aria-pressed={theme === 'dark'}>
           {theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode'}

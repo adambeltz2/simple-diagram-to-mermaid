@@ -3,6 +3,8 @@ import type { Page } from '../router';
 import { download } from './files';
 import { guessWorkspace, NO_WRAP, splitMarkdown, toMarkdown, type Wrap } from './markdown';
 import { Menu } from './Menu';
+import { useTheme } from '../theme';
+import { renderLabelSafeSvg, svgToPng } from './png';
 
 /**
  * Getting Mermaid in and out, the same in every tab.
@@ -29,6 +31,7 @@ const baseName = (file: string) => file.replace(/\.[^.]+$/, '') || file;
 
 export function useImportExport(o: ImportExportOptions) {
   const { page } = o;
+  const theme = useTheme();
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
@@ -63,6 +66,17 @@ export function useImportExport(o: ImportExportOptions) {
       () => o.flash('Could not copy. Select the code and copy it by hand.'),
     );
 
+  const downloadPng = async () => {
+    try {
+      // The PNG has no page behind it, so use the background you see in the preview (switch to Light mode for a light one).
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--preview-bg').trim() || '#ffffff';
+      const svg = await renderLabelSafeSvg(o.text, theme);
+      download(`${o.fileBase}.png`, await svgToPng(svg, { scale: 2, background: bg }), 'image/png');
+    } catch (e) {
+      o.flash(e instanceof Error ? e.message : 'Could not make the PNG.');
+    }
+  };
+
   const importMenu = (
     <>
       <Menu
@@ -95,6 +109,7 @@ export function useImportExport(o: ImportExportOptions) {
         { label: 'Download .mmd', onClick: () => download(`${o.fileBase}.mmd`, o.text, 'text/plain') },
         { label: 'Download .md', hint: 'chart in a Markdown block', onClick: () => download(`${o.fileBase}.md`, toMarkdown(o.text, wrap), 'text/markdown') },
         { label: 'Download SVG', disabled: !o.svg, onClick: () => download(`${o.fileBase}.svg`, o.svg, 'image/svg+xml') },
+        { label: 'Download PNG', hint: '2× size, as in the preview', disabled: !o.svg, onClick: downloadPng },
       ]}
     />
   );

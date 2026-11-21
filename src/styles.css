@@ -10,7 +10,6 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans
 .tab small { color: var(--muted); font-size: 11px; margin-left: 4px; }
 a.tab:hover { border-color: var(--border); color: var(--text); }
 .tab.on { background: var(--input); color: var(--text); border-color: var(--border); font-weight: 600; }
-.tab.soon { opacity: .55; cursor: default; }
 .shell-page { flex: 1; min-height: 0; }
 .app { position: relative; display: grid; height: 100%; grid-template-columns: 220px 1fr 420px; grid-template-rows: auto 1fr auto; grid-template-areas: "bar bar bar" "side canvas right" "foot foot foot"; }
 .toolbar { grid-area: bar; display: flex; gap: 6px 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }

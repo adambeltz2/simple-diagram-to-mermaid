@@ -16,7 +16,7 @@ Each tab keeps a list of documents (the **Document** picker, top left). Anything
 
 ## Import and export (same in every tab)
 - **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…*. A file or paste meant for the other tab says so and points you there.
-- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG*.
+- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG*, *Download PNG* (2× size, with the background you see in the preview; switch to Light mode first for a white one).
 - **Nothing is silently dropped**: anything the visual editor can't show (frontmatter, `%%{init}%%`, `click`, notes, unknown lines) is kept and written back on export, with a warning listing it.
 
 ## Tabs
