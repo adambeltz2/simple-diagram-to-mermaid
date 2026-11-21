@@ -4,7 +4,9 @@ import { download } from './files';
 import { classifyImport, describeChart, NO_WRAP, splitMarkdown, toMarkdown, type Wrap } from './markdown';
 import { Menu } from './Menu';
 import { useTheme } from '../theme';
-import { renderLabelSafeSvg, svgToPng } from './png';
+import { renderChartSvg, svgToPng } from './png';
+import { BACKGROUND, loadPrefs, resolveImageTheme, savePrefs, type ExportPrefs } from './exportPrefs';
+import { CHART_THEMES, getChartTheme, setChartTheme, themeIsInline } from './frontmatter';
 import { routeImport, takeNotice } from './route';
 
 /**
@@ -26,6 +28,8 @@ export interface ImportExportOptions {
   /** create a new document from this Mermaid text and open it; returns the name it was given */
   onImport: (text: string, name: string, wrap: Wrap) => string;
   flash: (msg: string) => void;
+  /** the chart's YAML frontmatter, so its Mermaid theme can be set from the Export menu */
+  look: { get: () => string | undefined; set: (fm: string | undefined) => void };
 }
 
 const baseName = (file: string) => file.replace(/\.[^.]+$/, '') || file;
@@ -34,6 +38,13 @@ export function useImportExport(o: ImportExportOptions) {
   const { page } = o;
   const theme = useTheme();
   const [pasting, setPasting] = useState(false);
+  const [appearance, setAppearance] = useState(false);
+  const [prefs, setPrefs] = useState<ExportPrefs>(loadPrefs);
+  const change = (p: Partial<ExportPrefs>) => {
+    const next = { ...prefs, ...p };
+    setPrefs(next);
+    savePrefs(next);
+  };
   const [pasted, setPasted] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const thing = page === 'gantt' ? 'plan' : page === 'text' ? 'chart' : 'diagram';
@@ -78,14 +89,22 @@ export function useImportExport(o: ImportExportOptions) {
       () => o.flash('Could not copy. Select the code and copy it by hand.'),
     );
 
+  /** Exports are drawn fresh in the chosen theme, so they don't depend on what the screen is showing. */
+  const imageTheme = resolveImageTheme(prefs, theme);
   const downloadPng = async () => {
     try {
-      // The PNG has no page behind it, so use the background you see in the preview (switch to Light mode for a light one).
-      const bg = getComputedStyle(document.documentElement).getPropertyValue('--preview-bg').trim() || '#ffffff';
-      const svg = await renderLabelSafeSvg(o.text, theme);
-      download(`${o.fileBase}.png`, await svgToPng(svg, { scale: 2, background: bg }), 'image/png');
+      const svg = await renderChartSvg(o.text, imageTheme, false);
+      const background = prefs.background === 'transparent' ? undefined : BACKGROUND[imageTheme];
+      download(`${o.fileBase}.png`, await svgToPng(svg, { scale: 2, background }), 'image/png');
     } catch (e) {
       o.flash(e instanceof Error ? e.message : 'Could not make the PNG.');
+    }
+  };
+  const downloadSvg = async () => {
+    try {
+      download(`${o.fileBase}.svg`, await renderChartSvg(o.text, imageTheme, false), 'image/svg+xml');
+    } catch (e) {
+      o.flash(e instanceof Error ? e.message : 'Could not make the SVG.');
     }
   };
 
@@ -120,8 +139,9 @@ export function useImportExport(o: ImportExportOptions) {
         { label: 'Copy code', onClick: copy },
         { label: 'Download .mmd', onClick: () => download(`${o.fileBase}.mmd`, o.text, 'text/plain') },
         { label: 'Download .md', hint: 'chart in a Markdown block', onClick: () => download(`${o.fileBase}.md`, toMarkdown(o.text, wrap), 'text/markdown') },
-        { label: 'Download SVG', disabled: !o.svg, onClick: () => download(`${o.fileBase}.svg`, o.svg, 'image/svg+xml') },
-        { label: 'Download PNG', hint: '2× size, as in the preview', disabled: !o.svg, onClick: downloadPng },
+        { label: 'Download SVG', hint: 'plain SVG text', disabled: !o.svg, onClick: downloadSvg },
+        { label: 'Download PNG', hint: '2× size', disabled: !o.svg, onClick: downloadPng },
+        { label: 'Appearance…', hint: 'image theme, chart theme', onClick: () => setAppearance(true) },
       ]}
     />
   );
@@ -148,5 +168,54 @@ export function useImportExport(o: ImportExportOptions) {
     </div>
   );
 
-  return { importMenu, exportMenu, pasteDialog };
+  const chartTheme = getChartTheme(o.look.get());
+  const appearanceDialog = appearance && (
+    <div className="modal" onPointerDown={(e) => e.target === e.currentTarget && setAppearance(false)}>
+      <div className="sheet" role="dialog" aria-label="Export appearance" style={{ width: 'min(520px, 100%)' }}>
+        <h2>Export appearance</h2>
+        <fieldset className="opts">
+          <legend>Image theme <small>for SVG and PNG</small></legend>
+          {(['match', 'light', 'dark'] as const).map((v) => (
+            <label key={v}>
+              <input type="radio" name="imgtheme" checked={prefs.imageTheme === v} onChange={() => change({ imageTheme: v })} />
+              {v === 'match' ? `Match the screen (${theme})` : v === 'light' ? 'Light' : 'Dark'}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="opts">
+          <legend>PNG background</legend>
+          {(['solid', 'transparent'] as const).map((v) => (
+            <label key={v}>
+              <input type="radio" name="pngbg" checked={prefs.background === v} onChange={() => change({ background: v })} />
+              {v === 'solid' ? 'Solid' : 'Transparent'}
+            </label>
+          ))}
+        </fieldset>
+        <label className="opts">
+          <span>Chart theme <small>saved in the chart, so other apps show it too</small></span>
+          <select
+            value={chartTheme ?? ''}
+            disabled={themeIsInline(o.look.get())}
+            onChange={(e) => o.look.set(setChartTheme(o.look.get(), e.target.value || null))}
+          >
+            <option value="">Not set (the app's default)</option>
+            {chartTheme && !(CHART_THEMES as readonly string[]).includes(chartTheme) && <option value={chartTheme}>{chartTheme}</option>}
+            {CHART_THEMES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          {themeIsInline(o.look.get()) && <small>This chart sets its config inline in the text; change it there.</small>}
+        </label>
+        <div className="actions">
+          <button className="primary" onClick={() => setAppearance(false)}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return { importMenu, exportMenu, pasteDialog, appearanceDialog };
 }

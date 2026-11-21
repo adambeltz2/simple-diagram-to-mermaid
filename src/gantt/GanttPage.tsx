@@ -144,6 +144,7 @@ export function GanttPage() {
     svg,
     fileBase: 'plan',
     pasteName: 'Pasted plan',
+    look: { get: () => gantt.frontmatter, set: (fm) => edit((g) => ({ ...g, frontmatter: fm })) },
     isMine: isGanttText,
     flash,
     onImport: (t, name, wrap) => {
@@ -465,6 +466,7 @@ export function GanttPage() {
       </footer>
 
       {io.pasteDialog}
+      {io.appearanceDialog}
       <Toast notice={toast.notice} clear={toast.clear} />
     </div>
   );

@@ -16,7 +16,7 @@ Each tab keeps a list of documents (the **Document** picker, top left). Anything
 
 ## Import and export (same in every tab)
 - **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…*. Import works from any tab: a flowchart, state, ER or Gantt chart opens in its visual tab, and every other chart type opens in the **Text** tab, each as a new document there. The tab you were in is left alone. A file or paste meant for the other tab says so and points you there.
-- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG*, *Download PNG* (2× size, with the background you see in the preview; switch to Light mode first for a white one).
+- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG* (plain SVG text, which opens in more apps), *Download PNG* (2× size), and **Appearance…**: choose a Light or Dark image regardless of the screen (or match it), a solid or transparent PNG background, and a Mermaid **chart theme** (default, neutral, forest, dark, base) that is saved in the chart's own frontmatter, so apps that read it, such as GitHub, show the same theme.
 - **Nothing is silently dropped**: anything the visual editor can't show (frontmatter, `%%{init}%%`, `click`, notes, unknown lines) is kept and written back on export, with a warning listing it.
 
 ## Tabs

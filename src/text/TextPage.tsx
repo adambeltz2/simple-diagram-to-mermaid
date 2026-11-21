@@ -7,6 +7,7 @@ import { routeImport } from '../io/route';
 import { Toast, useToast } from '../io/useToast';
 import { useDocuments } from '../io/useDocuments';
 import { useImportExport } from '../io/useImportExport';
+import { textFrontmatter, withFrontmatter } from '../io/frontmatter';
 import { useTheme } from '../theme';
 
 const SAMPLE = `sequenceDiagram
@@ -43,6 +44,7 @@ export function TextPage() {
     svg,
     fileBase: 'chart',
     pasteName: 'Pasted chart',
+    look: { get: () => textFrontmatter(text), set: (fm) => setText(withFrontmatter(text, fm)) },
     isMine: isTextOnly,
     flash: toast.flash,
     onImport: (t, name, wrap) => {
@@ -128,6 +130,7 @@ export function TextPage() {
       </footer>
 
       {io.pasteDialog}
+      {io.appearanceDialog}
       <Toast notice={toast.notice} clear={toast.clear} />
     </div>
   );

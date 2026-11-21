@@ -292,6 +292,7 @@ function Editor() {
     svg,
     fileBase: 'diagram',
     pasteName: 'Pasted diagram',
+    look: { get: () => meta.frontmatter, set: (fm) => setMeta((m) => ({ ...m, frontmatter: fm })) },
     isMine: isCanvasText,
     flash: toast.flash,
     onImport: (text, name, wrap) => {
@@ -957,6 +958,7 @@ function Editor() {
       </section>
 
       {io.pasteDialog}
+      {io.appearanceDialog}
       <Toast notice={toast.notice} clear={toast.clear} />
     </div>
   );

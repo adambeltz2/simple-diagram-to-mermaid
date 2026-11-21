@@ -63,16 +63,17 @@ export async function svgToPng(svg: string, opts: { scale?: number; background?:
 let n = 0;
 
 /**
- * Render the chart again with plain SVG text instead of HTML labels. A canvas that has drawn an SVG with
- * embedded HTML (<foreignObject>) refuses to export, so the PNG must be made from this copy. The normal live
- * preview keeps its HTML labels; their setting is put back afterwards.
+ * Render a chart to an SVG string with the given theme. With `htmlLabels: false` the text is plain SVG, which
+ * (a) lets a canvas export it (a canvas that drew an SVG with embedded HTML, <foreignObject>, refuses to export)
+ * and (b) opens correctly in more apps than SVG with HTML labels. The live preview keeps HTML labels; their
+ * setting is put back afterwards.
  */
-export async function renderLabelSafeSvg(code: string, theme: 'dark' | 'light'): Promise<string> {
+export async function renderChartSvg(code: string, theme: 'dark' | 'light', htmlLabels: boolean): Promise<string> {
   const mermaid = (await import('mermaid')).default;
   const base = { startOnLoad: false, theme: theme === 'dark' ? 'dark' : 'default', securityLevel: 'strict' } as const;
   try {
-    mermaid.initialize({ ...base, htmlLabels: false, flowchart: { htmlLabels: false } });
-    const id = `png-${Date.now()}-${++n}`;
+    mermaid.initialize({ ...base, htmlLabels, flowchart: { htmlLabels } });
+    const id = `export-${Date.now()}-${++n}`;
     try {
       return (await mermaid.render(id, code)).svg;
     } finally {

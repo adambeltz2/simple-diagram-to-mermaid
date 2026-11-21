@@ -198,3 +198,10 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .text-main .view-head button { margin-left: auto; }
 .text-code { width: 100%; height: 100%; border: none; border-radius: 0; resize: none; padding: 12px; }
 .text-page .side-right { overflow: auto; }
+
+.opts { display: grid; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 0; font-size: 13px; }
+.opts legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+.opts small, .opts legend small { color: var(--muted); font-size: 11px; margin-left: 4px; }
+.opts label { display: flex; gap: 8px; align-items: center; }
+label.opts { display: grid; gap: 6px; }
+.opts select { width: 100%; }
