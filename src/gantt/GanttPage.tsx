@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Preview } from '../Preview';
 import { isGanttText } from '../io/markdown';
 import { Toast, useToast } from '../io/useToast';
+import { DocPicker } from '../io/DocPicker';
+import { type Doc } from '../io/docs';
+import { useDocuments } from '../io/useDocuments';
 import { useImportExport } from '../io/useImportExport';
 import { useTheme } from '../theme';
 import { GanttChart } from './GanttChart';
@@ -30,18 +33,21 @@ const STARTER = `gantt
     Go live :milestone, live, after qa, 0d
 `;
 
-function load(): string {
+/** What the single-document autosave of earlier versions held, so nobody loses a plan on upgrade. */
+function legacyText(): string | null {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const j = JSON.parse(raw);
-      if (typeof j.text === 'string') return j.text;
-    }
+    const j = raw ? JSON.parse(raw) : null;
+    return typeof j?.text === 'string' ? j.text : null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return STARTER;
 }
+
+const blankPlan = () => {
+  const today = new Date().toISOString().slice(0, 10);
+  return `gantt\n    title New plan\n    dateFormat YYYY-MM-DD\n    section Tasks\n    First task :t1, ${today}, 5d\n`;
+};
 
 const AXIS = [
   ['', 'Default (2026-12-01)'], ['%b %d', 'Dec 01'], ['%d %b', '01 Dec'], ['%m/%d', '12/01'], ['%Y-%m-%d', '2026-12-01'],
@@ -49,8 +55,10 @@ const AXIS = [
 
 export function GanttPage() {
   const theme = useTheme();
-  const init = useMemo(load, []);
-  const [text, setText] = useState(init);
+  const docs = useDocuments<string>('gantt', { legacy: legacyText, sample: () => STARTER, blank: blankPlan, firstName: 'My plan' });
+  /** which document the text on screen belongs to, so autosave can never write into another one */
+  const loadedFor = useRef(docs.activeId);
+  const [text, setText] = useState(docs.active.data);
   const [sel, setSel] = useState<string | null>(null);
   const [selSec, setSelSec] = useState<number | null>(null);
   const [zoom, setZoom] = useState(12);
@@ -115,29 +123,40 @@ export function GanttPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  /** Show a document. Undo history belongs to one document, so it starts fresh. */
+  const openDoc = (d: Doc<string>) => {
+    loadedFor.current = d.id;
+    past.current = [];
+    future.current = [];
+    last.current = { key: '', at: 0 };
+    setText(d.data);
+    setSel(null);
+    setSelSec(null);
+    tick((t) => t + 1);
+  };
+  const newDoc = (name: string, data: string) => openDoc(docs.create(name, data));
+
   /* ----- import / export: the same in every workspace ----- */
   const io = useImportExport({
     page: 'gantt',
     text,
+    wrap: docs.active.wrap,
     svg,
     fileBase: 'plan',
+    pasteName: 'Pasted plan',
     isMine: isGanttText,
     flash,
-    onImport: (t) => {
-      pushHistory();
-      setText(t);
-      setSel(null);
-      setSelSec(null);
+    onImport: (t, name, wrap) => {
+      const d = docs.create(name, t, wrap);
+      openDoc(d);
+      return d.name;
     },
   });
 
-  // Quiet autosave so a refresh never loses work.
+  // Quiet autosave into the document that is open.
   useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ text }));
-    } catch {
-      /* ignore */
-    }
+    docs.update(loadedFor.current, text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
   const commit = (g: Gantt) => setText(serializeGantt(g));
@@ -148,12 +167,7 @@ export function GanttPage() {
     commit(next);
   };
 
-  /* ----- toolbar actions ----- */
-  const reset = () => {
-    pushHistory();
-    setText(STARTER);
-    setSel(null);
-  };
+  const undoEdit = () => undoRef.current();
 
   const days = (id: string) => {
     const s = sc.get(id);
@@ -275,7 +289,7 @@ export function GanttPage() {
             onClick={() => {
               edit((g) => deleteTask(g, t.id));
               setSel(null);
-              flash(`Deleted “${t.name}”.`, true);
+              flash(`Deleted “${t.name}”.`, undoEdit);
             }}
           >
             Delete task
@@ -305,7 +319,7 @@ export function GanttPage() {
                 return { ...next, sections: next.sections.filter((_, i) => i !== selSec) };
               });
               setSelSec(null);
-              flash(`Deleted the section “${s.name || 'Tasks'}” and its tasks.`, true);
+              flash(`Deleted the section “${s.name || 'Tasks'}” and its tasks.`, undoEdit);
             }}
           >
             Delete section and its tasks
@@ -325,6 +339,32 @@ export function GanttPage() {
   return (
     <div className="app">
       <header className="toolbar">
+        <DocPicker
+          docs={docs.docs}
+          activeId={docs.activeId}
+          onSwitch={(id) => {
+            const d = docs.switchTo(id);
+            if (d) openDoc(d);
+          }}
+          newItems={[
+            { label: 'Blank plan', onClick: () => newDoc('New plan', blankPlan()) },
+            { label: 'From the sample', onClick: () => newDoc('Sample plan', STARTER) },
+          ]}
+          onRename={(name) => docs.rename(docs.activeId, name)}
+          onDuplicate={() => {
+            const d = docs.duplicate(docs.activeId);
+            if (d) {
+              openDoc(d);
+              flash(`Made a copy, “${d.name}”.`);
+            }
+          }}
+          onDelete={() => {
+            const r = docs.remove(docs.activeId);
+            if (!r) return;
+            openDoc(r.next);
+            flash(`Deleted “${r.removed.name}”.`, () => openDoc(r.undo()));
+          }}
+        />
         <button onClick={undo} disabled={!past.current.length} title="Ctrl+Z">Undo</button>
         <button onClick={redo} disabled={!future.current.length} title="Ctrl+Shift+Z">Redo</button>
         <button onClick={() => setZoom((z) => ZOOMS[Math.max(0, ZOOMS.indexOf(z) - 1)] ?? z)} title="Zoom out">−</button>
@@ -332,7 +372,6 @@ export function GanttPage() {
         <span className="spacer" />
         {io.importMenu}
         {io.exportMenu}
-        <button className="danger" onClick={reset}>Reset sample</button>
       </header>
 
       <aside className="sidebar">
@@ -377,7 +416,7 @@ export function GanttPage() {
       <main className="canvas gantt-main">
         <div className="view-head">
               <strong>{gantt.title || 'Untitled plan'}</strong>
-              <span>{tasks.length} tasks · drag bars to move, drag the right edge to resize, drag the dot onto another bar to link</span>
+              <span>{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} · drag bars to move, drag the right edge to resize, drag the dot onto another bar to link</span>
         </div>
         <GanttChart
               gantt={gantt}
@@ -388,7 +427,7 @@ export function GanttPage() {
               onSelectSection={(i) => { setSel(null); setSelSec(i); }}
               onBegin={() => pushHistory()}
               onChange={commit}
-              onNotice={flash}
+              onNotice={(m, undoable) => flash(m, undoable ? undoEdit : undefined)}
         />
       </main>
 
@@ -422,10 +461,11 @@ export function GanttPage() {
 
       <footer className="footer">
         <span>Gantt · v{__APP_VERSION__}</span>
+        <span>Autosaved in this browser</span>
       </footer>
 
       {io.pasteDialog}
-      <Toast notice={toast.notice} onUndo={() => { undo(); toast.clear(); }} />
+      <Toast notice={toast.notice} clear={toast.clear} />
     </div>
   );
 }

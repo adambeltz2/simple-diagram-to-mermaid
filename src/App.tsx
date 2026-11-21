@@ -22,6 +22,9 @@ import { useTheme } from './theme';
 import { download } from './io/files';
 import { isCanvasText } from './io/markdown';
 import { Toast, useToast } from './io/useToast';
+import { DocPicker } from './io/DocPicker';
+import { type Doc } from './io/docs';
+import { useDocuments } from './io/useDocuments';
 import { useImportExport } from './io/useImportExport';
 import { Preview } from './Preview';
 import {
@@ -79,22 +82,39 @@ const STARTER: Graph = autoLayout({
   ],
 });
 
-function loadInitial(): Graph {
+/** The graph the single-document autosave of earlier versions held, so nobody loses a diagram on upgrade. */
+function legacyGraph(): Graph | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const g = raw ? normalizeGraph(JSON.parse(raw)) : null;
-    if (g) return g;
+    return raw ? normalizeGraph(JSON.parse(raw)) : null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return STARTER;
 }
+
+const blankGraph = (diagram?: 'state' | 'er'): Graph => ({
+  direction: 'TD',
+  nodes: [],
+  edges: [],
+  groups: [],
+  ...(diagram ? { diagram } : {}),
+});
 
 const EMPTY_DEFS: Record<string, Css> = {};
 
 function Editor() {
+  const docs = useDocuments<Graph>('diagrams', {
+    legacy: legacyGraph,
+    sample: () => STARTER,
+    blank: () => blankGraph(),
+    firstName: 'My diagram',
+  });
+  /** which document the canvas belongs to, so autosave can never write into another one */
+  const loadedFor = useRef(docs.activeId);
+  /** after showing another document, the next history snapshot is a baseline, not an undo step */
+  const adopt = useRef(false);
   const initial = useMemo(() => {
-    const g = loadInitial();
+    const g = normalizeGraph(docs.active.data) ?? STARTER;
     return { g, ...graphToFlow(g, true) };
   }, []);
   const [direction, setDirection] = useState<Direction>(initial.g.direction);
@@ -142,6 +162,15 @@ function Editor() {
   const commit = () => {
     const s = makeSnap();
     const k = JSON.stringify(s);
+    if (adopt.current) {
+      adopt.current = false;
+      lastSnap.current = s;
+      lastKey.current = k;
+      past.current = [];
+      future.current = [];
+      setTick((t) => t + 1);
+      return;
+    }
     if (k === lastKey.current) return;
     past.current.push(lastSnap.current);
     if (past.current.length > 100) past.current.shift();
@@ -236,33 +265,48 @@ function Editor() {
     setDraft(null);
   };
 
-  /** Replace the whole diagram from Mermaid text (import): fresh layout, no position merging. */
-  const loadText = (text: string) => {
-    const { graph: parsed, warnings: w } = parseDiagram(text);
-    load(fitGroups(autoLayout(parsed)), true);
-    setWarnings(w);
+  /** Show a document. Undo history belongs to one document, so it starts fresh. */
+  const openDoc = (d: Doc<Graph>) => {
+    const g = normalizeGraph(d.data) ?? blankGraph();
+    loadedFor.current = d.id;
+    adopt.current = true;
+    past.current = [];
+    future.current = [];
+    load(g, true);
     setDraft(null);
+    setWarnings([]);
+    setTick((t) => t + 1);
+  };
+  const newDoc = (name: string, g: Graph) => {
+    const d = docs.create(name, g);
+    openDoc(d);
+    return d;
   };
 
-  // ---- import / export: the same in every workspace -----------------------
+  // ---- import / export: the same in every tab (imports become NEW documents) ---
   const toast = useToast();
   const io = useImportExport({
     page: 'diagrams',
     text: generated,
+    wrap: docs.active.wrap,
     svg,
     fileBase: 'diagram',
+    pasteName: 'Pasted diagram',
     isMine: isCanvasText,
     flash: toast.flash,
-    onImport: loadText,
+    onImport: (text, name, wrap) => {
+      const { graph: parsed, warnings: w } = parseDiagram(text);
+      const d = docs.create(name, fitGroups(autoLayout(parsed)), wrap);
+      openDoc(d);
+      setWarnings(w);
+      return d.name;
+    },
   });
 
-  // Quiet autosave so a refresh never loses work.
+  // Quiet autosave into the document that is open.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(graph));
-    } catch {
-      /* ignore */
-    }
+    docs.update(loadedFor.current, graph);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph]);
 
   // ---- canvas actions -----------------------------------------------------
@@ -436,9 +480,8 @@ function Editor() {
       try {
         const g = normalizeGraph(JSON.parse(text));
         if (!g) throw new Error();
-        load(g, true);
-        setWarnings([]);
-        setDraft(null);
+        const d = newDoc(file.name.replace(/\.[^.]+$/, '').replace(/\.project$/, '') || 'Project', g);
+        toast.flash(`Opened the project as a new diagram, “${d.name}”.`);
       } catch {
         setWarnings(['That file is not a valid project .json.']);
       }
@@ -449,6 +492,34 @@ function Editor() {
   return (
     <div className="app">
       <header className="toolbar">
+        <DocPicker
+          docs={docs.docs}
+          activeId={docs.activeId}
+          onSwitch={(id) => {
+            const d = docs.switchTo(id);
+            if (d) openDoc(d);
+          }}
+          newItems={[
+            { label: 'Flowchart', onClick: () => newDoc('New flowchart', blankGraph()) },
+            { label: 'State diagram', onClick: () => newDoc('New state diagram', blankGraph('state')) },
+            { label: 'ER diagram', onClick: () => newDoc('New ER diagram', blankGraph('er')) },
+            { label: 'From the sample', onClick: () => newDoc('Sample diagram', STARTER) },
+          ]}
+          onRename={(name) => docs.rename(docs.activeId, name)}
+          onDuplicate={() => {
+            const d = docs.duplicate(docs.activeId);
+            if (d) {
+              openDoc(d);
+              toast.flash(`Made a copy, “${d.name}”.`);
+            }
+          }}
+          onDelete={() => {
+            const r = docs.remove(docs.activeId);
+            if (!r) return;
+            openDoc(r.next);
+            toast.flash(`Deleted “${r.removed.name}”.`, () => openDoc(r.undo()));
+          }}
+        />
         <label>
           Diagram{' '}
           <select
@@ -456,10 +527,17 @@ function Editor() {
             onChange={(e) => {
               const to = e.target.value as DiagramKind;
               const nice = to === 'state' ? 'state diagram' : to === 'er' ? 'ER diagram' : 'flowchart';
-              if (nodes.length && !confirm(`Convert this diagram to a ${nice}? Some details may be lost.`)) return;
-              load(autoLayout(convertDiagram(graph, to)), true);
-              setDraft(null);
-              setWarnings([]);
+              const converted = autoLayout(convertDiagram(graph, to));
+              if (!nodes.length) {
+                // nothing drawn yet, so there is nothing to keep: just change the type
+                load(converted, true);
+                setDraft(null);
+                setWarnings([]);
+                return;
+              }
+              // otherwise the conversion is a new diagram, next to the original
+              const d = newDoc(`${docs.active.name} (${nice})`, converted);
+              toast.flash(`Made a ${nice} copy, “${d.name}”. The original is still in your list.`);
             }}
           >
             <option value="flowchart">Flowchart</option>
@@ -489,20 +567,6 @@ function Editor() {
         <button onClick={() => projectInput.current?.click()} title="Open a project file that keeps node positions">Open project</button>
         <button onClick={() => download('diagram.project.json', JSON.stringify(graph, null, 2), 'application/json')} title="Save a project file that keeps node positions">
           Save project
-        </button>
-        <button
-          className="danger"
-          onClick={() => {
-            if (confirm('Clear the canvas?')) {
-              setNodes([]);
-              setEdges([]);
-              setMeta(meta.diagram ? { diagram: meta.diagram } : {});
-              setDraft(null);
-              setWarnings([]);
-            }
-          }}
-        >
-          Clear
         </button>
         <input
           ref={projectInput}
@@ -851,6 +915,7 @@ function Editor() {
 
       <footer className="footer">
         <span>Diagram → Mermaid v{__APP_VERSION__}</span>
+        <span>Autosaved in this browser</span>
         <a href="https://github.com/adambeltz2/simple-diagram-to-mermaid" target="_blank" rel="noreferrer">
           GitHub
         </a>
@@ -892,7 +957,7 @@ function Editor() {
       </section>
 
       {io.pasteDialog}
-      <Toast notice={toast.notice} />
+      <Toast notice={toast.notice} clear={toast.clear} />
     </div>
   );
 }

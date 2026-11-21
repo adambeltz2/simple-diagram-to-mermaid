@@ -2,28 +2,39 @@ import { useCallback, useRef, useState } from 'react';
 
 export interface Notice {
   msg: string;
-  undo?: boolean;
+  /** shows an Undo button that runs this */
+  onUndo?: () => void;
 }
 
-/** One small transient message per workspace; `flash(msg, true)` adds an Undo button. */
+/** One small transient message per workspace. */
 export function useToast() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const timer = useRef(0);
-  const flash = useCallback((msg: string, undo = false) => {
-    setNotice({ msg, undo });
+  const flash = useCallback((msg: string, onUndo?: () => void) => {
+    setNotice({ msg, onUndo });
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setNotice(null), 6000);
+    timer.current = window.setTimeout(() => setNotice(null), 7000);
   }, []);
   const clear = useCallback(() => setNotice(null), []);
   return { notice, flash, clear };
 }
 
-export function Toast({ notice, onUndo }: { notice: Notice | null; onUndo?: () => void }) {
+export function Toast({ notice, clear }: { notice: Notice | null; clear: () => void }) {
   if (!notice) return null;
+  const undo = notice.onUndo;
   return (
     <div className="toast" role="status">
       <span>{notice.msg}</span>
-      {notice.undo && onUndo && <button onClick={onUndo}>Undo</button>}
+      {undo && (
+        <button
+          onClick={() => {
+            clear();
+            undo();
+          }}
+        >
+          Undo
+        </button>
+      )}
     </div>
   );
 }

@@ -188,3 +188,6 @@ h3 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spaci
 .sheet h2 { margin: 0; font-size: 16px; }
 .sheet textarea { width: 100%; min-height: 260px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: vertical; white-space: pre; }
 .sheet .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.docpick { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.docpick select { max-width: 220px; color: var(--text); }

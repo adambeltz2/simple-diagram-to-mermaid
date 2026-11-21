@@ -5,12 +5,19 @@
 A basic tool to **visually edit Mermaid** and move it in and out of other applications:
 paste or open Mermaid (or Markdown containing it), change it visually, and export it again.
 
+## Documents: nothing is ever replaced
+Each tab keeps a list of documents (the **Document** picker, top left). Anything you bring in or convert becomes a **new** document next to the others, so there is nothing to confirm and nothing to lose:
+- **Import ▾** (*Paste text…* or *Open file…*, `.mmd` / `.md`) opens as a new document. A Markdown file's other text stays with that document.
+- **Changing a drawn diagram's type** makes a converted copy and leaves the original. (An empty one just changes type.)
+- **New ▾** starts a blank flowchart, state diagram, ER diagram or plan, or a copy of the sample.
+- **Manage ▾**: rename, duplicate, delete. Deleting can be undone.
+- *Open project* (`.json`) also opens as a new document.
+- Undo / redo belong to the document you're in. Everything autosaves quietly in the browser.
+
 ## Import and export (same in every tab)
-- **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…* (`.mmd` / `.md`). A Markdown file's other text is remembered.
-- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of the file around it), *Download SVG*.
-- A file or paste meant for the other tab says so and points you there; nothing is lost.
+- **Import ▾**: *Paste text…* (plain Mermaid, or Markdown with a `mermaid` block) or *Open file…*. A file or paste meant for the other tab says so and points you there.
+- **Export ▾**: *Copy code*, *Download .mmd*, *Download .md* (your chart back in its Markdown block, with the rest of that file around it), *Download SVG*.
 - **Nothing is silently dropped**: anything the visual editor can't show (frontmatter, `%%{init}%%`, `click`, notes, unknown lines) is kept and written back on export, with a warning listing it.
-- Your work autosaves quietly in the browser, so a refresh doesn't lose it.
 
 ## Tabs
 - **Diagrams**: flowcharts, state diagrams and ER diagrams on a drag-and-drop canvas (below).
